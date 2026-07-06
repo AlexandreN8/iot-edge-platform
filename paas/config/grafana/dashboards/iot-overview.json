@@ -1,0 +1,42 @@
+{
+  "title": "IoT Overview (Phase 0)",
+  "uid": "iot-overview-phase0",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-30m", "to": "now" },
+  "refresh": "5s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Latest readings",
+      "type": "table",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres-iot" },
+          "format": "table",
+          "rawSql": "SELECT received_at, sensor_id, type, value, unit FROM readings ORDER BY received_at DESC LIMIT 20",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Continuous sensors over time (CO2, temperature, humidity, smoke)",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 10 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres-iot" },
+          "format": "time_series",
+          "rawSql": "SELECT received_at AS \"time\", value, sensor_id AS metric FROM readings WHERE type IN ('co2','temperature','humidity','smoke') ORDER BY received_at",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
