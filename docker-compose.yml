@@ -1,0 +1,3 @@
+include:
+  - edge/docker-compose.yml
+  - paas/docker-compose.yml

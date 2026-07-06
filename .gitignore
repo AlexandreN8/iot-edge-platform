@@ -4,3 +4,7 @@ __pycache__/
 .env
 mosquitto/data/
 mosquitto/log/
+
+README.md
+docs/Architecture.md
+*.md

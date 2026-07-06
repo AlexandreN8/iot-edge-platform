@@ -1,13 +1,15 @@
 import paho.mqtt.client as mqtt
-import os, json, time
+import os, json, time, threading
 from filtering import is_duplicate, is_valid_json
 from schema_validation import validate
 from buffer import init_db, insert
+from sender import run_sender_loop
 
 BROKER_HOST = os.environ.get("BROKER_HOST", "localhost")
 BROKER_PORT = int(os.environ.get("BROKER_PORT", 1883))
+DB_PATH = "buffer.db"
 
-conn = init_db()
+conn = init_db(DB_PATH)
 
 
 def connect_with_retry(client, host, port, max_retries=5):
@@ -39,6 +41,9 @@ def on_message(client, userdata, msg):
 
 
 if __name__ == "__main__":
+    sender_thread = threading.Thread(target=run_sender_loop, args=(DB_PATH,), daemon=True)
+    sender_thread.start()
+
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     client.on_message = on_message
     connect_with_retry(client, BROKER_HOST, BROKER_PORT)

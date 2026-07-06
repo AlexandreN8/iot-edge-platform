@@ -11,6 +11,11 @@ services:
       - mosquitto_log:/mosquitto/log
     networks:
       - iot_network
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 -i healthcheck -W 3 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   iot_devices:
     build: ./iot_devices
@@ -29,13 +34,19 @@ services:
     environment:
       - BROKER_HOST=broker_mqtt
       - BROKER_PORT=1883
+      - KAFKA_BOOTSTRAP=kafka:9092
     depends_on:
-      - broker_mqtt
+      broker_mqtt:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - iot_network
+      - paas_network
 
 networks:
   iot_network:
+  pass_network:
 
 volumes:
   mosquitto_data:
