@@ -1,0 +1,42 @@
+services:
+  broker_mqtt:
+    image: eclipse-mosquitto:latest
+    container_name: mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    networks:
+      - iot_network
+
+  iot_devices:
+    build: ./iot_devices
+    container_name: iot_devices
+    environment:
+      - BROKER_HOST=broker_mqtt
+      - BROKER_PORT=1883
+    depends_on:
+      - broker_mqtt
+    networks:
+      - iot_network
+
+  edge_processor:
+    build: ./edge_processor
+    container_name: edge_processor
+    environment:
+      - BROKER_HOST=broker_mqtt
+      - BROKER_PORT=1883
+    depends_on:
+      - broker_mqtt
+    networks:
+      - iot_network
+
+networks:
+  iot_network:
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
