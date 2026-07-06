@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "IoT Postgres",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "iot",
+      "Username": "iot",
+      "SSLMode": "prefer"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS readings (
+    id SERIAL PRIMARY KEY,
+    sensor_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    ts DOUBLE PRECISION NOT NULL,
+    value DOUBLE PRECISION NOT NULL,
+    unit TEXT,
+    received_at TIMESTAMP DEFAULT NOW()
+);
