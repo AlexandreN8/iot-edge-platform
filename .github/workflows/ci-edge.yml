@@ -8,49 +8,55 @@ on:
   pull_request:
     paths:
       - 'edge/**'
+      - '.github/workflows/ci-edge.yml'
 
 jobs:
-  test-edge-processor:
+  test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [edge_processor, iot_devices]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        working-directory: edge/edge_processor
+      - name: Lint, install, test
+        working-directory: edge/${{ matrix.service }}
         run: |
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+          pip install -r requirements.txt -r requirements-dev.txt
+          ruff check .
+          pytest --cov=. --cov-report=xml
 
-      - name: Lint with ruff
-        working-directory: edge/edge_processor
-        run: ruff check .
+      - name: Build image
+        run: docker build -t ${{ matrix.service }}:ci ./edge/${{ matrix.service }}
 
-      - name: Run unit tests
-        working-directory: edge/edge_processor
-        run: pytest --cov=. --cov-report=xml
-
-      - name: Build edge_processor image
-        run: docker build -t edge-processor:ci ./edge/edge_processor
-
-      - name: Build iot_devices image
-        run: docker build -t iot-devices:ci ./edge/iot_devices
-
-      - name: Scan edge_processor image with Trivy
+      - name: Scan with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: edge-processor:ci
+          image-ref: ${{ matrix.service }}:ci
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
-
-      - name: Scan iot_devices image with Trivy
-        uses: aquasecurity/trivy-action@v0.36.0
+  
+  sonarcloud:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
         with:
-          image-ref: iot-devices:ci
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: '1'
+          fetch-depth: 0
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@v4
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: edge
+          args: >
+            -Dsonar.organization=alexandren8
+            -Dsonar.projectKey=AlexandreN8_iot-edge-platform-edge
+            -Dsonar.exclusions=mosquitto/**,**/__pycache__/**,**/.venv/**

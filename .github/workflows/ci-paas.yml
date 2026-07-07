@@ -8,38 +8,55 @@ on:
   pull_request:
     paths:
       - 'paas/**'
+      - '.github/workflows/ci-paas.yml'
 
 jobs:
-  test-cleaner:
+  test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [cleaner]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        working-directory: paas/services/cleaner
+      - name: Lint, install, test
+        working-directory: paas/services/${{ matrix.service }}
         run: |
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
+          pip install -r requirements.txt -r requirements-dev.txt
+          ruff check .
+          pytest --cov=. --cov-report=xml
 
-      - name: Lint with ruff
-        working-directory: paas/services/cleaner
-        run: ruff check .
+      - name: Build image
+        run: docker build -t ${{ matrix.service }}:ci ./paas/services/${{ matrix.service }}
 
-      - name: Run unit tests
-        working-directory: paas/services/cleaner
-        run: pytest --cov=. --cov-report=xml
-
-      - name: Build cleaner image
-        run: docker build -t cleaner:ci ./paas/services/cleaner
-
-      - name: Scan cleaner image with Trivy
+      - name: Scan with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: cleaner:ci
+          image-ref: ${{ matrix.service }}:ci
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
+
+  sonarcloud:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@v4
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: paas
+          args: >
+            -Dsonar.organization=alexandren8
+            -Dsonar.projectKey=AlexandreN8_iot-edge-platform-paas
+            -Dsonar.exclusions=kafka/**,db/**,pgadmin/**,grafana/**,**/__pycache__/**,**/.venv/**
