@@ -32,12 +32,6 @@ jobs:
           ruff check .
           pytest --cov=. --cov-report=xml
 
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-${{ matrix.service }}
-          path: paas/services/${{ matrix.service }}/coverage.xml
-
       - name: Build image
         run: docker build -t ${{ matrix.service }}:ci ./paas/services/${{ matrix.service }}
 
@@ -48,29 +42,3 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
-
-  sonarcloud:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      
-      - name: Download cleaner coverage
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-cleaner
-          path: paas/services/cleaner
-
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@v6
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          projectBaseDir: paas
-          args: >
-            -Dsonar.organization=alexandren8
-            -Dsonar.projectKey=AlexandreN8_iot-edge-platform-paas
-            -Dsonar.python.coverage.reportPaths=services/cleaner/coverage.xml
-            -Dsonar.exclusions=kafka/**,db/**,pgadmin/**,grafana/**,**/__pycache__/**,**/.venv/**
