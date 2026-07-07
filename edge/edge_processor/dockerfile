@@ -1,10 +1,17 @@
 FROM python:3.12-slim
 
 WORKDIR /app
-RUN apt-get update && apt-get install -y sqlite3 && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir --only-binary=:all: -r requirements.txt
 
-COPY . .
+COPY main.py .
+COPY buffer.py .
+COPY filtering.py .
+COPY schema_validation.py .
+COPY sender.py .
+
+RUN useradd --create-home --shell /bin/bash appuser
+USER appuser
+
 CMD ["python", "main.py"]
