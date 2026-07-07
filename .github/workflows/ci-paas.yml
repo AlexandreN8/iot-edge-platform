@@ -26,7 +26,7 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Lint with ruff
-        working-directory: edge/services/cleaner
+        working-directory: paas/services/cleaner
         run: ruff check .
 
       - name: Run unit tests
