@@ -1,0 +1,51 @@
+# .github/workflows/ci-edge.yml
+name: CI - Edge
+
+on:
+  push:
+    paths:
+      - 'edge/**'
+      - '.github/workflows/ci-edge.yml'
+  pull_request:
+    paths:
+      - 'edge/**'
+
+jobs:
+  test-edge-processor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: edge/edge_processor
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run unit tests
+        working-directory: edge/edge_processor
+        run: pytest --cov=. --cov-report=xml
+
+      - name: Build edge_processor image
+        run: docker build -t edge-processor:ci ./edge/edge_processor
+
+      - name: Build iot_devices image
+        run: docker build -t iot-devices:ci ./edge/iot_devices
+
+      - name: Scan edge_processor image with Trivy
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: edge-processor:ci
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+      - name: Scan iot_devices image with Trivy
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: iot-devices:ci
+          severity: CRITICAL,HIGH
+          exit-code: '1'
