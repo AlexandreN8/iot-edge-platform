@@ -11,5 +11,5 @@ def test_first_message_not_duplicate():
 
 def test_exact_repeat_is_duplicate():
     payload = b'{"unique": "repeat-test"}'
-    is_duplicate(payload)  # première fois, l'enregistre
+    is_duplicate(payload)  # first time, register
     assert is_duplicate(payload) is True
