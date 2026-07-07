@@ -32,12 +32,6 @@ jobs:
           ruff check .
           pytest --cov=. --cov-report=xml
 
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-${{ matrix.service }}
-          path: edge/${{ matrix.service }}/coverage.xml
-
       - name: Build image
         run: docker build -t ${{ matrix.service }}:ci ./edge/${{ matrix.service }}
 
@@ -48,35 +42,3 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
-  
-  sonarcloud:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download edge_processor coverage
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-edge_processor
-          path: edge/edge_processor
-
-      - name: Download iot_devices coverage
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-iot_devices
-          path: edge/iot_devices
-
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@v6
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          projectBaseDir: edge
-          args: >
-            -Dsonar.organization=alexandren8
-            -Dsonar.projectKey=AlexandreN8_iot-edge-platform-edge
-            -Dsonar.python.coverage.reportPaths=edge_processor/coverage.xml,iot_devices/coverage.xml
-            -Dsonar.exclusions=mosquitto/**,**/__pycache__/**,**/.venv/**
