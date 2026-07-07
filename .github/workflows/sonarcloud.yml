@@ -3,6 +3,15 @@ name: SonarCloud Scan
 on:
   push:
     branches: [main]
+    paths:
+      - 'edge/**'
+      - 'paas/**'
+      - '.github/workflows/sonarcloud.yml'
+  pull_request:
+    paths:
+      - 'edge/**'
+      - 'paas/**'
+      - '.github/workflows/sonarcloud.yml'
 
 jobs:
   test-all:
