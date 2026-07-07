@@ -1,4 +1,4 @@
-from sensor_simulator import generate_value, build_payload, maybe_inject_fault
+from iot_simulator import generate_value, build_payload, maybe_inject_fault
 
 def test_generate_value_continuous_within_bounds():
     sensor = {"type": "co2", "sensor_id": "co2-001", "min": 400, "max": 1500, "unit": "ppm"}
