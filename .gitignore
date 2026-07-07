@@ -13,3 +13,4 @@ docs/Architecture.md
 coverage.xml
 .coverage
 htmlcov/
+.ruff_cache/

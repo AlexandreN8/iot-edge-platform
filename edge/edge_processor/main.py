@@ -1,5 +1,8 @@
 import paho.mqtt.client as mqtt
-import os, json, time, threading
+import os
+import json
+import time
+import threading
 from filtering import is_duplicate, is_valid_json
 from schema_validation import validate
 from buffer import init_db, insert
