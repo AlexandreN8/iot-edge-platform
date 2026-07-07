@@ -1,4 +1,3 @@
-# paas/services/cleaner/business_rules.py
 BUSINESS_RANGES = {
     "co2": (0, 5000),
     "temperature": (-40, 60),
