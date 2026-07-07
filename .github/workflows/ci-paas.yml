@@ -1,0 +1,41 @@
+name: CI - PaaS
+
+on:
+  push:
+    paths:
+      - 'paas/**'
+      - '.github/workflows/ci-paas.yml'
+  pull_request:
+    paths:
+      - 'paas/**'
+
+jobs:
+  test-cleaner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: paas/services/cleaner
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run unit tests
+        working-directory: paas/services/cleaner
+        run: pytest --cov=. --cov-report=xml
+
+      - name: Build cleaner image
+        run: docker build -t cleaner:ci ./paas/services/cleaner
+
+      - name: Scan cleaner image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: cleaner:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'

@@ -8,3 +8,8 @@ mosquitto/log/
 README.md
 docs/Architecture.md
 *.md
+
+.venv/
+coverage.xml
+.coverage
+htmlcov/
