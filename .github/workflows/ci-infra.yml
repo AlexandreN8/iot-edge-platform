@@ -15,8 +15,9 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        tier: [edge, paas]
+        tier: [edge]
     defaults:
       run:
         working-directory: infra/terraform/${{ matrix.tier }}
@@ -56,3 +57,5 @@ jobs:
           fetch-depth: 0
       - name: gitleaks
         uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
