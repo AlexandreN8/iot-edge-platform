@@ -11,7 +11,8 @@ COPY filtering.py .
 COPY schema_validation.py .
 COPY sender.py .
 
-RUN useradd --create-home --shell /bin/bash appuser
+RUN useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /app
 USER appuser
 
 CMD ["python", "main.py"]

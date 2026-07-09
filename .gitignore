@@ -14,3 +14,11 @@ coverage.xml
 .coverage
 htmlcov/
 .ruff_cache/
+
+*.tfstate
+*.tfstate.*
+
+*.tfvars
+*.tfvars.json
+
+.terraform/
