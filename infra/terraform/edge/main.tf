@@ -32,7 +32,7 @@ resource "docker_container" "broker_mqtt" {
   image = docker_image.mosquitto.image_id
 
   networks_advanced {
-    name = docker_network.edge_network.name
+    name    = docker_network.edge_network.name
     aliases = ["broker_mqtt"]
   }
 
