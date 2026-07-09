@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        tier: [edge]
+        tier: [edge, paas]
     defaults:
       run:
         working-directory: infra/terraform/${{ matrix.tier }}
