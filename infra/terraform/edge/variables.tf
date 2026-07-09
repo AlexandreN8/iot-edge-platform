@@ -8,3 +8,8 @@ variable "edge_ssh_user" {
   type        = string
   default     = "alex"
 }
+
+variable "paas_kafka_host" {
+  description = "Reachable IP of the machine running the PaaS Kafka broker"
+  type        = string
+}

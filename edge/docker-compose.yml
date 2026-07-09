@@ -1,6 +1,6 @@
 services:
   broker_mqtt:
-    image: eclipse-mosquitto:latest
+    image: eclipse-mosquitto:2.0.22
     container_name: mosquitto
     restart: unless-stopped
     ports:
@@ -46,7 +46,7 @@ services:
 
 networks:
   iot_network:
-  pass_network:
+  paas_network:
 
 volumes:
   mosquitto_data:
