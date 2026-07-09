@@ -1,0 +1,58 @@
+name: CI - Infrastructure
+
+on:
+  pull_request:
+    paths:
+      - 'infra/**'
+      - '.github/workflows/ci-infra.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/ci-infra.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        tier: [edge, paas]
+    defaults:
+      run:
+        working-directory: infra/terraform/${{ matrix.tier }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: tflint
+        uses: terraform-linters/setup-tflint@v6
+      - name: tflint run (soft-fail - first pass, to be triaged)
+        run: tflint --init && tflint
+        continue-on-error: true
+
+      - name: terraform init (no backend, no remote connect)
+        run: terraform init -backend=false
+
+      - name: terraform validate
+        run: terraform validate
+
+      - name: tfsec (soft-fail - first pass, to be triaged)
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: infra/terraform/${{ matrix.tier }}
+          soft_fail: true
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v3
