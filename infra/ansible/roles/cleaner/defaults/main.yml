@@ -1,6 +1,6 @@
-repo_url: "https://github.com/AlexandreN8/iot-edge-platform.git"
-repo_dest: "/home/{{ ansible_user | default(lookup('env','USER')) }}/iot-edge-platform"
-image_name: cleaner:local
-container_name: cleaner
-network_name: paas_network
-build_context: "{{ repo_dest }}/paas/services/cleaner"
+cleaner_repo_url: "https://github.com/AlexandreN8/iot-edge-platform.git"
+cleaner_repo_dest: "/home/{{ ansible_user | default(lookup('env', 'USER')) }}/iot-edge-platform"
+cleaner_image_name: cleaner:local
+cleaner_container_name: cleaner
+cleaner_network_name: paas_network
+cleaner_build_context: "{{ cleaner_repo_dest }}/paas/services/cleaner"

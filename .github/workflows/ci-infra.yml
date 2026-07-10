@@ -66,20 +66,24 @@ jobs:
       defaults:
         run:
           working-directory: infra/ansible
+      env:
+        ANSIBLE_VAULT_PASSWORD_FILE: /tmp/ci_vault_pass
       steps:
         - uses: actions/checkout@v4
 
         - name: Install Ansible + lint tools
           run: pip install ansible ansible-lint yamllint
 
+        - name: Create CI-only placeholder vault password (never decrypts real secrets)
+          run: echo "ci-placeholder-not-a-real-secret" > /tmp/ci_vault_pass
+
         - name: yamllint
           run: yamllint .
 
         - name: ansible-playbook --syntax-check
           run: |
-            echo "ci-placeholder-not-a-real-secret" > /tmp/ci_vault_pass
             for f in playbooks/*.yml; do
-              ansible-playbook "$f" --syntax-check --vault-password-file /tmp/ci_vault_pass
+              ansible-playbook "$f" --syntax-check
             done
 
         - name: ansible-lint (soft-fail - first pass, to be triaged)
