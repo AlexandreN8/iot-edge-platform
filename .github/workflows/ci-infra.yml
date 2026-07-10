@@ -77,8 +77,9 @@ jobs:
 
         - name: ansible-playbook --syntax-check
           run: |
+            echo "ci-placeholder-not-a-real-secret" > /tmp/ci_vault_pass
             for f in playbooks/*.yml; do
-              ansible-playbook "$f" --syntax-check
+              ansible-playbook "$f" --syntax-check --vault-password-file /tmp/ci_vault_pass
             done
 
         - name: ansible-lint (soft-fail - first pass, to be triaged)
