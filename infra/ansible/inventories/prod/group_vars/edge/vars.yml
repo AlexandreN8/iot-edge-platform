@@ -1,0 +1,3 @@
+broker_host: broker_mqtt
+broker_port: 1883
+kafka_bootstrap: "{{ kafka_external_host }}:9094"

@@ -22,3 +22,5 @@ htmlcov/
 *.tfvars.json
 
 .terraform/
+
+.vault_pass

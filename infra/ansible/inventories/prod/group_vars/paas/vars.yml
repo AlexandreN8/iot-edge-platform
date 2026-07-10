@@ -1,0 +1,9 @@
+postgres_db: iot
+postgres_user: iot
+postgres_password: "{{ vault_postgres_password }}"
+
+pgadmin_default_email: admin@local.dev
+pgadmin_default_password: "{{ vault_pgadmin_password }}"
+
+grafana_admin_user: admin
+grafana_admin_password: "{{ vault_grafana_admin_password }}"
