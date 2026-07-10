@@ -1,6 +1,6 @@
-repo_url: "https://github.com/AlexandreN8/iot-edge-platform.git"
-repo_dest: "/home/{{ ansible_user }}/iot-edge-platform"
-image_name: edge_processor:local
-container_name: edge_processor
-network_name: iot_network
-build_context: "{{ repo_dest }}/edge/edge_processor"
+edge_processor_repo_url: "https://github.com/AlexandreN8/iot-edge-platform.git"
+edge_processor_repo_dest: "/home/{{ ansible_user | default(lookup('env', 'USER')) }}/iot-edge-platform"
+edge_processor_image_name: edge_processor:local
+edge_processor_container_name: edge_processor
+edge_processor_network_name: iot_network
+edge_processor_build_context: "{{ edge_processor_repo_dest }}/edge/edge_processor"

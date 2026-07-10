@@ -8,30 +8,31 @@
 
 - name: Ensure repo is cloned and up to date on the target host
   ansible.builtin.git:
-    repo: "{{ repo_url }}"
-    dest: "{{ repo_dest }}"
+    repo: "{{ cleaner_repo_url }}"
+    dest: "{{ cleaner_repo_dest }}"
     version: main
     force: true
+  when: container_state | default('started') != 'absent'
 
 - name: Build cleaner image
   community.docker.docker_image:
-    name: "{{ image_name }}"
+    name: "{{ cleaner_image_name }}"
     build:
-      path: "{{ build_context }}"
+      path: "{{ cleaner_build_context }}"
     source: build
     force_source: true
   register: cleaner_image
   when: container_state | default('started') != 'absent'
 
-- name: Ensure cleaner container is running with latest image
+- name: Ensure cleaner container state
   community.docker.docker_container:
-    name: "{{ container_name }}"
+    name: "{{ cleaner_container_name }}"
     image: "{{ cleaner_image.image.Id if container_state | default('started') != 'absent' else omit }}"
     networks:
-      - name: "{{ network_name }}"
+      - name: "{{ cleaner_network_name }}"
     env:
       KAFKA_BOOTSTRAP: "kafka:9092"
-      POSTGRES_DSN: "postgresql://{{ postgres_user | urlencode }}:{{ postgres_password | urlencode | regex_replace('/', '%2F') }}@postgres:5432/{{ postgres_db }}"
+      POSTGRES_DSN: "postgresql://{{ postgres_user }}:{{ postgres_password }}@postgres:5432/{{ postgres_db }}"
       PYTHONUNBUFFERED: "1"
     restart_policy: unless-stopped
     state: "{{ container_state | default('started') }}"
