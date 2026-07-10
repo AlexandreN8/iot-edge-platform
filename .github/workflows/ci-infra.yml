@@ -48,6 +48,7 @@ jobs:
         with:
           working_directory: infra/terraform/${{ matrix.tier }}
           soft_fail: true
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
   secrets-scan:
     runs-on: ubuntu-latest
