@@ -1,0 +1,6 @@
+---
+- name: Deploy edge application containers
+  hosts: edge
+  roles:
+    - iot_devices
+    - edge_processor

@@ -1,0 +1,39 @@
+---
+- name: Ensure Docker SDK for Python is present (via apt, avoids PEP 668)
+  ansible.builtin.apt:
+    name: python3-docker
+    state: present
+    update_cache: true
+  become: true
+
+- name: Ensure repo is cloned and up to date on the target host
+  ansible.builtin.git:
+    repo: "{{ repo_url }}"
+    dest: "{{ repo_dest }}"
+    version: main
+    force: true
+  when: container_state | default('started') != 'absent'
+
+- name: Build iot_devices image
+  community.docker.docker_image:
+    name: "{{ image_name }}"
+    build:
+      path: "{{ build_context }}"
+    source: build
+    force_source: true
+  register: iot_devices_image
+  when: container_state | default('started') != 'absent'
+
+- name: Ensure iot_devices container state
+  community.docker.docker_container:
+    name: "{{ container_name }}"
+    image: "{{ iot_devices_image.image.Id if container_state | default('started') != 'absent' else omit }}"
+    networks:
+      - name: "{{ network_name }}"
+    env:
+      BROKER_HOST: "{{ broker_host }}"
+      BROKER_PORT: "{{ broker_port | string }}"
+      PYTHONUNBUFFERED: "1"
+    restart_policy: unless-stopped
+    state: "{{ container_state | default('started') }}"
+    image_name_mismatch: recreate
