@@ -1,0 +1,6 @@
+repo_url: "https://github.com/AlexandreN8/iot-edge-platform.git"
+repo_dest: "/home/{{ ansible_user }}/iot-edge-platform"
+image_name: iot_devices:local
+container_name: iot_devices
+network_name: iot_network
+build_context: "{{ repo_dest }}/edge/iot_devices"

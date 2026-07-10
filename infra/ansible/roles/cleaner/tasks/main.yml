@@ -1,0 +1,38 @@
+---
+- name: Ensure Docker SDK for Python is present (via apt, avoids PEP 668)
+  ansible.builtin.apt:
+    name: python3-docker
+    state: present
+    update_cache: true
+  become: true
+
+- name: Ensure repo is cloned and up to date on the target host
+  ansible.builtin.git:
+    repo: "{{ repo_url }}"
+    dest: "{{ repo_dest }}"
+    version: main
+    force: true
+
+- name: Build cleaner image
+  community.docker.docker_image:
+    name: "{{ image_name }}"
+    build:
+      path: "{{ build_context }}"
+    source: build
+    force_source: true
+  register: cleaner_image
+  when: container_state | default('started') != 'absent'
+
+- name: Ensure cleaner container is running with latest image
+  community.docker.docker_container:
+    name: "{{ container_name }}"
+    image: "{{ cleaner_image.image.Id if container_state | default('started') != 'absent' else omit }}"
+    networks:
+      - name: "{{ network_name }}"
+    env:
+      KAFKA_BOOTSTRAP: "kafka:9092"
+      POSTGRES_DSN: "postgresql://{{ postgres_user | urlencode }}:{{ postgres_password | urlencode | regex_replace('/', '%2F') }}@postgres:5432/{{ postgres_db }}"
+      PYTHONUNBUFFERED: "1"
+    restart_policy: unless-stopped
+    state: "{{ container_state | default('started') }}"
+    image_name_mismatch: recreate

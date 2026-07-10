@@ -215,33 +215,6 @@ resource "docker_container" "pgadmin" {
   restart    = "unless-stopped"
 }
 
-# --- Cleaner ---
-resource "docker_image" "cleaner" {
-  name = "cleaner:local"
-  build {
-    context    = "${path.module}/../../../paas/services/cleaner"
-    dockerfile = "Dockerfile"
-  }
-}
-
-resource "docker_container" "cleaner" {
-  name  = "cleaner"
-  image = docker_image.cleaner.image_id
-
-  networks_advanced {
-    name = docker_network.paas_network.name
-  }
-
-  env = [
-    "KAFKA_BOOTSTRAP=kafka:9092",
-    "POSTGRES_DSN=postgresql://${var.postgres_user}:${var.postgres_password}@postgres:5432/${var.postgres_db}",
-    "PYTHONUNBUFFERED=1",
-  ]
-
-  depends_on = [docker_container.kafka_init, docker_container.postgres]
-  restart    = "unless-stopped"
-}
-
 # --- Grafana ---
 resource "docker_image" "grafana" {
   name = "grafana/grafana:11.4.0"
