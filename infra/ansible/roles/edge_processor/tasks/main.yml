@@ -10,7 +10,7 @@
   ansible.builtin.git:
     repo: "{{ edge_processor_repo_url }}"
     dest: "{{ edge_processor_repo_dest }}"
-    version: main
+    version: "{{ deploy_branch | default('main') }}"
     force: true
   when: container_state | default('started') != 'absent'
 
