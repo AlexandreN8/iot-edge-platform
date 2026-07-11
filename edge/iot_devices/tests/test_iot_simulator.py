@@ -1,3 +1,5 @@
+import json
+import random
 from iot_simulator import generate_value, build_payload, maybe_inject_fault
 
 def test_generate_value_continuous_within_bounds():
@@ -27,3 +29,27 @@ def test_maybe_inject_fault_returns_tuple():
     result = maybe_inject_fault(sensor, payload)
     assert isinstance(result, tuple)
     assert len(result) == 2
+
+def test_maybe_inject_fault_statistical_spike_reaches_extreme():
+    """A statistical_spike fault should jump to the sensor's own min or max, staying business-plausible."""
+    sensor = {"type": "temperature", "sensor_id": "temp-001", "min": 0, "max": 50, "unit": "°C"}
+    payload = build_payload(sensor, 20.0)
+
+    random.seed(1)  
+    found_spike = False
+    for _ in range(200):  
+        msg, label = maybe_inject_fault(sensor, payload)
+        if label == "statistical_spike":
+            found_spike = True
+            data = json.loads(msg)
+            assert data["value"] in (sensor["min"], sensor["max"])
+            break
+    assert found_spike, "statistical_spike branch never triggered across 200 attempts"
+
+
+def test_generate_opening_value_mostly_stable():
+    """Opening sensor should stay stable most cycles, not toggle every call like the old uniform choice."""
+    sensor = {"type": "opening", "sensor_id": "opening-test", "values": [0, 1], "unit": "bool"}
+    values = [generate_value(sensor) for _ in range(30)]
+    toggles = sum(1 for a, b in zip(values, values[1:]) if a != b)
+    assert toggles < 15  

@@ -25,6 +25,8 @@ jobs:
             name: iot_devices
           - path: paas/services/cleaner
             name: cleaner
+          - path: paas/services/anomaly_detector
+            name: anomaly_detector
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -59,6 +61,10 @@ jobs:
         with:
           name: coverage-cleaner
           path: paas/services/cleaner
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-anomaly_detector
+          path: paas/services/anomaly_detector
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@v6
         env:
@@ -67,5 +73,5 @@ jobs:
           args: >
             -Dsonar.organization=alexandren8
             -Dsonar.projectKey=AlexandreN8_iot-edge-platform
-            -Dsonar.sources=edge/edge_processor,edge/iot_devices,paas/services/cleaner
-            -Dsonar.python.coverage.reportPaths=edge/edge_processor/coverage.xml,edge/iot_devices/coverage.xml,paas/services/cleaner/coverage.xml
+            -Dsonar.sources=edge/edge_processor,edge/iot_devices,paas/services/cleaner,paas/services/anomaly_detector
+            -Dsonar.python.coverage.reportPaths=edge/edge_processor/coverage.xml,edge/iot_devices/coverage.xml,paas/services/cleaner/coverage.xml,paas/services/anomaly_detector/coverage.xml

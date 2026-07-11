@@ -3,3 +3,4 @@
   hosts: paas
   roles:
     - cleaner
+    - anomaly_detector

@@ -9,9 +9,10 @@ KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
 POSTGRES_DSN = os.environ.get("POSTGRES_DSN")
 TOPIC = "raw"
 DLQ_TOPIC = "dlq"
+ENRICHED_TOPIC = "enriched"
 GROUP_ID = "cleaner-group"
 
-_last_seen = {}  
+_last_seen = {}
 
 
 def connect_postgres_with_retry(dsn, max_retries=5):
@@ -49,6 +50,19 @@ def send_to_dlq(producer, payload, reason):
     producer.poll(0)
 
 
+def enrich_payload(payload):
+    return {
+        **payload,
+        "validated_at": time.time(),
+        "validated_by": "cleaner",
+    }
+
+
+def send_to_enriched(producer, payload):
+    producer.produce(ENRICHED_TOPIC, value=json.dumps(payload))
+    producer.poll(0)
+
+
 def run():
     pg_conn = connect_postgres_with_retry(POSTGRES_DSN)
 
@@ -60,6 +74,7 @@ def run():
     })
     consumer.subscribe([TOPIC])
     dlq_producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP})
+    enriched_producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP})
 
     print(f"Cleaner listening on topic '{TOPIC}'...")
     try:
@@ -88,9 +103,12 @@ def run():
                 continue
 
             insert_reading(pg_conn, payload)
+            enriched = enrich_payload(payload)
+            send_to_enriched(enriched_producer, enriched)
+
             _last_seen[payload["sensor_id"]] = (payload["value"], payload["timestamp"])
             consumer.commit(msg)
-            print(f"Stored: {payload['sensor_id']} = {payload['value']} {payload['unit']}")
+            print(f"Stored + enriched: {payload['sensor_id']} = {payload['value']} {payload['unit']}")
     except KeyboardInterrupt:
         print("Shutdown requested...")
     finally:

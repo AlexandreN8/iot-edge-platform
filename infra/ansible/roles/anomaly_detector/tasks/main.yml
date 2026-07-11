@@ -6,25 +6,24 @@
     update_cache: true
   become: true
 
-- name: Build cleaner image
+- name: Build anomaly_detector image
   community.docker.docker_image:
-    name: "{{ cleaner_image_name }}"
+    name: "{{ anomaly_detector_image_name }}"
     build:
-      path: "{{ cleaner_build_context }}"
+      path: "{{ anomaly_detector_build_context }}"
     source: build
     force_source: true
-  register: cleaner_image
+  register: anomaly_detector_image
   when: container_state | default('started') != 'absent'
 
-- name: Ensure cleaner container state
+- name: Ensure anomaly_detector container state
   community.docker.docker_container:
-    name: "{{ cleaner_container_name }}"
-    image: "{{ cleaner_image.image.Id if container_state | default('started') != 'absent' else omit }}"
+    name: "{{ anomaly_detector_container_name }}"
+    image: "{{ anomaly_detector_image.image.Id if container_state | default('started') != 'absent' else omit }}"
     networks:
-      - name: "{{ cleaner_network_name }}"
+      - name: "{{ anomaly_detector_network_name }}"
     env:
       KAFKA_BOOTSTRAP: "kafka:9092"
-      POSTGRES_DSN: "postgresql://{{ postgres_user }}:{{ postgres_password }}@postgres:5432/{{ postgres_db }}"
       PYTHONUNBUFFERED: "1"
     restart_policy: unless-stopped
     state: "{{ container_state | default('started') }}"
