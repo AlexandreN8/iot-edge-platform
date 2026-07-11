@@ -12,15 +12,20 @@
 #   make -C infra edge-up      (from repo root)
 #   make edge-up               (from inside infra/)
 
+
+# Optional: specify a branch to deploy (default: main)
+# make -C infra edge-up BRANCH=feature/services
+BRANCH ?= main
+
 .PHONY: edge-up edge-down paas-up paas-down
 
 # --- Edge tier (remote laptop, over SSH) ---
 edge-up:
 	cd terraform/edge && terraform apply -auto-approve
-	cd ansible && ansible-playbook playbooks/deploy-edge.yml -K
+	cd ansible && ansible-playbook playbooks/deploy-edge.yml -K -e deploy_branch=$(BRANCH)
 
 edge-down:
-	cd ansible && ansible-playbook playbooks/deploy-edge.yml -K -e container_state=absent
+	cd ansible && ansible-playbook playbooks/deploy-edge.yml -K -e container_state=absent -e deploy_branch=$(BRANCH)
 	cd terraform/edge && terraform destroy
 
 # --- PaaS tier (local desktop daemon, no SSH needed) ---

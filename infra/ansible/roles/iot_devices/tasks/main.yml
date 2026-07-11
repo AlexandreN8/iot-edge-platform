@@ -10,7 +10,7 @@
   ansible.builtin.git:
     repo: "{{ iot_devices_repo_url }}"
     dest: "{{ iot_devices_repo_dest }}"
-    version: main
+    version: "{{ deploy_branch | default('main') }}"
     force: true
   when: container_state | default('started') != 'absent'
 
