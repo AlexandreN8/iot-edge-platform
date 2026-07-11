@@ -7,7 +7,7 @@ import os
 BROKER_HOST = os.environ.get("BROKER_HOST", "localhost")
 BROKER_PORT = int(os.environ.get("BROKER_PORT", 1883))
 INTERVAL = 5
-FAULT_RATE = 0.15  # 15% des cycles injectent volontairement un problème
+FAULT_RATE = 0.15  # 15% of messages are faulty, distributed across several fault types
 
 SENSORS_CONFIG = [
     {"type": "co2", "sensor_id": "co2-001", "min": 400, "max": 1500, "unit": "ppm"},
@@ -21,8 +21,11 @@ SENSORS_CONFIG = [
 ]
 
 _last_payload_cache = {}
+_last_clean_value = {}       # last clean value per sensor, used for random walk generation and business-duplicate fault injection
+_last_opening_state = {}     # last known state of opening sensors, used for natural toggle and flapping burst generation
 
 CONTINUOUS_SENSOR_TYPES = {"co2", "temperature", "humidity", "smoke", "vibration", "power_consumption"}
+STATISTICAL_SENSOR_TYPES = {"co2", "temperature", "humidity", "smoke", "power_consumption", "vibration", "occupancy"}
 
 BUSINESS_PLAUSIBLE_RANGES = {
     "co2": (0, 5000),
@@ -31,13 +34,47 @@ BUSINESS_PLAUSIBLE_RANGES = {
     "smoke": (0, 1000),
 }
 
+RANDOM_WALK_STEP_RATIO = 0.05   # step size as a fraction of the sensor's range, for generating gradual drift in continuous sensors
+OPENING_TOGGLE_PROBABILITY = 0.05  # probability, per cycle, of a natural toggle for opening sensors (independent of flapping bursts)
+FLAPPING_BURST_PROBABILITY = 0.05  # probability, per cycle, of a rapid flapping burst for opening sensors
+FLAPPING_BURST_TOGGLES = 6
+FLAPPING_BURST_DELAY = 1.5
+
 
 def generate_value(sensor):
-    """ Generate a random value for the sensor, either from a range or from a predefined list of values. """
+    """
+    Random walk around the sensor's last clean value, bounded to [min, max] -
+    models gradual drift like a real sensor, rather than an independent
+    uniform draw each cycle (which made every reading equally likely to be
+    an "extreme", leaving no room for a genuine statistical anomaly signal).
+    """
     if "values" in sensor:
-        return random.choice(sensor["values"])
+        return generate_opening_value(sensor)
+
+    span = sensor["max"] - sensor["min"]
+    step = span * RANDOM_WALK_STEP_RATIO
+    last = _last_clean_value.get(sensor["sensor_id"])
+
+    if last is None:
+        value = random.uniform(sensor["min"], sensor["max"])
     else:
-        return round(random.uniform(sensor["min"], sensor["max"]), 2)
+        value = last + random.uniform(-step, step)
+        value = max(sensor["min"], min(sensor["max"], value))
+
+    value = round(value, 2)
+    _last_clean_value[sensor["sensor_id"]] = value
+    return value
+
+
+def generate_opening_value(sensor):
+    """ Mostly stable state, rare natural toggle - flapping bursts are injected separately as a fault. """
+    last = _last_opening_state.get(sensor["sensor_id"])
+    if last is None:
+        last = random.choice(sensor["values"])
+    elif random.random() < OPENING_TOGGLE_PROBABILITY:
+        last = 1 - last
+    _last_opening_state[sensor["sensor_id"]] = last
+    return last
 
 
 def build_payload(sensor, measure):
@@ -49,29 +86,34 @@ def build_payload(sensor, measure):
         "unit": sensor["unit"],
     }
 
-def maybe_inject_fault(sensor, payload):
-    """ Inject a fault into the payload based on the FAULT_RATE. Returns a tuple of (faulty_payload, fault_label) or (None, None) if no fault is injected. """
-    roll = random.random()
 
-    if roll < FAULT_RATE * 0.2:
-        # Inject a malformed JSON: return a string that is not valid JSON
+def maybe_inject_fault(sensor, payload):
+    """
+    Inject a fault into the payload based on FAULT_RATE. Returns a tuple of
+    (faulty_payload, fault_label) or (None, None) if no fault is injected.
+    Six equally-weighted fault categories, each firing on ~1/6th of FAULT_RATE:
+    the first four are pipeline-integrity faults (must be rejected before
+    Cleaner or by Cleaner); the last two are genuine anomaly signals meant
+    to reach Anomaly detector and be flagged there, not rejected upstream.
+    """
+    roll = random.random()
+    bucket = FAULT_RATE / 6
+
+    if roll < bucket * 1:
         return "{not valid json, oops", "malformed_json"
 
-    elif roll < FAULT_RATE * 0.4:
-        # Inject a missing field: remove the "unit" field
+    elif roll < bucket * 2:
         broken = dict(payload)
         broken.pop("unit", None)
         return json.dumps(broken), "missing_field"
 
-    elif roll < FAULT_RATE * 0.6:
-        # Inject a technical duplicate: same bytes as last message for this sensor
+    elif roll < bucket * 3:
         last = _last_payload_cache.get(sensor["sensor_id"])
         if last is not None:
             return last, "duplicate_technical"
         return None, None
 
-    elif roll < FAULT_RATE * 0.8:
-        # Inject a business out-of-range value: 5x the plausible max for this sensor type
+    elif roll < bucket * 4:
         sensor_type = sensor["type"]
         if sensor_type in BUSINESS_PLAUSIBLE_RANGES:
             implausible = dict(payload)
@@ -80,8 +122,7 @@ def maybe_inject_fault(sensor, payload):
             return json.dumps(implausible), "business_out_of_range"
         return None, None
 
-    elif roll < FAULT_RATE:
-        # Inject a business duplicate: same value as last clean measurement for this sensor
+    elif roll < bucket * 5:
         if sensor["type"] in CONTINUOUS_SENSOR_TYPES:
             last_clean = _last_payload_cache.get(sensor["sensor_id"])
             if last_clean is not None:
@@ -91,7 +132,45 @@ def maybe_inject_fault(sensor, payload):
                 return json.dumps(business_dup), "business_duplicate"
         return None, None
 
+    elif roll < bucket * 6:
+        # Statistical spike: jump to the sensor's own operational extreme -
+        # still within Cleaner's business-plausible range (so it reaches
+        # enriched, not dlq), but far from this sensor's recent random-walk
+        # baseline - exactly what Anomaly detector's stddev check targets.
+        if sensor["type"] in STATISTICAL_SENSOR_TYPES:
+            spike = dict(payload)
+            spike["value"] = sensor["max"] if random.random() < 0.5 else sensor["min"]
+            _last_clean_value[sensor["sensor_id"]] = spike["value"]
+            return json.dumps(spike), "statistical_spike"
+        return None, None
+
     return None, None
+
+
+def maybe_inject_flapping_burst(client, sensor):
+    """
+    Independent, opening-only trigger: publishes several rapid toggles in a
+    tight burst, then returns to normal cadence. Kept separate from
+    maybe_inject_fault since it emits multiple messages instead of replacing
+    one, and only makes sense for a binary sensor.
+    """
+    if sensor["type"] != "opening":
+        return False
+    if random.random() >= FLAPPING_BURST_PROBABILITY:
+        return False
+
+    print(f"[FAULT: flapping_burst] Starting rapid toggle burst on {sensor['sensor_id']}")
+    state = _last_opening_state.get(sensor["sensor_id"], 0)
+    topic = f"sensors/{sensor['sensor_id']}"
+    for _ in range(FLAPPING_BURST_TOGGLES):
+        state = 1 - state
+        payload = build_payload(sensor, state)
+        client.publish(topic, json.dumps(payload), qos=1)
+        print(f"[FAULT: flapping_burst] Published on {topic}: {payload}")
+        time.sleep(FLAPPING_BURST_DELAY)
+    _last_opening_state[sensor["sensor_id"]] = state
+    return True
+
 
 def connect_with_retry(client, host, port, max_retries=5):
     for attempt in range(1, max_retries + 1):
@@ -114,6 +193,9 @@ if __name__ == "__main__":
     try:
         while True:
             for sensor in SENSORS_CONFIG:
+                if maybe_inject_flapping_burst(client, sensor):
+                    continue  # skip normal publish this cycle if a flapping burst was injected
+
                 measure = generate_value(sensor)
                 payload = build_payload(sensor, measure)
                 payload_json = json.dumps(payload)

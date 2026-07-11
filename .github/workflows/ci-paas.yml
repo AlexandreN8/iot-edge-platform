@@ -11,30 +11,38 @@ on:
       - '.github/workflows/ci-paas.yml'
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Ruff (once per tier root)
+        run: |
+          pip install ruff
+          ruff check paas/services/
+
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        service: [cleaner]
+        service: [cleaner, anomaly_detector]
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Lint, install, test
+      - name: Install, test
         working-directory: paas/services/${{ matrix.service }}
         run: |
           pip install -r requirements.txt -r requirements-dev.txt
-          ruff check .
           pytest --cov=. --cov-report=xml
-
       - name: Build image
         run: docker build -t ${{ matrix.service }}:ci ./paas/services/${{ matrix.service }}
-
       - name: Scan with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:

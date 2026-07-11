@@ -1,0 +1,4 @@
+anomaly_detector_image_name: anomaly_detector:local
+anomaly_detector_container_name: anomaly_detector
+anomaly_detector_network_name: paas_network
+anomaly_detector_build_context: "{{ playbook_dir }}/../../../paas/services/anomaly_detector"
