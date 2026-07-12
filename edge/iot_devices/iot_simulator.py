@@ -7,7 +7,7 @@ import os
 BROKER_HOST = os.environ.get("BROKER_HOST", "localhost")
 BROKER_PORT = int(os.environ.get("BROKER_PORT", 1883))
 INTERVAL = 5
-FAULT_RATE = 0.15  # 15% of messages are faulty, distributed across several fault types
+FAULT_RATE = 0.05  # 5% of messages are faulty, distributed across several fault types
 
 SENSORS_CONFIG = [
     {"type": "co2", "sensor_id": "co2-001", "min": 400, "max": 1500, "unit": "ppm"},
