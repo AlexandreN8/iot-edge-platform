@@ -87,63 +87,75 @@ def build_payload(sensor, measure):
     }
 
 
+def _fault_malformed_json(sensor, payload):
+    return "{not valid json, oops", "malformed_json"
+
+
+def _fault_missing_field(sensor, payload):
+    broken = dict(payload)
+    broken.pop("unit", None)
+    return json.dumps(broken), "missing_field"
+
+
+def _fault_duplicate_technical(sensor, payload):
+    last = _last_payload_cache.get(sensor["sensor_id"])
+    if last is not None:
+        return last, "duplicate_technical"
+    return None, None
+
+
+def _fault_business_out_of_range(sensor, payload):
+    sensor_type = sensor["type"]
+    if sensor_type in BUSINESS_PLAUSIBLE_RANGES:
+        implausible = dict(payload)
+        _, plausible_max = BUSINESS_PLAUSIBLE_RANGES[sensor_type]
+        implausible["value"] = plausible_max * 5
+        return json.dumps(implausible), "business_out_of_range"
+    return None, None
+
+
+def _fault_business_duplicate(sensor, payload):
+    if sensor["type"] in CONTINUOUS_SENSOR_TYPES:
+        last_clean = _last_payload_cache.get(sensor["sensor_id"])
+        if last_clean is not None:
+            last_data = json.loads(last_clean)
+            business_dup = dict(payload)
+            business_dup["value"] = last_data["value"]
+            return json.dumps(business_dup), "business_duplicate"
+    return None, None
+
+
+def _fault_statistical_spike(sensor, payload):
+    if sensor["type"] in STATISTICAL_SENSOR_TYPES:
+        spike = dict(payload)
+        spike["value"] = sensor["max"] if random.random() < 0.5 else sensor["min"]
+        _last_clean_value[sensor["sensor_id"]] = spike["value"]
+        return json.dumps(spike), "statistical_spike"
+    return None, None
+
+
+_FAULT_HANDLERS = [
+    _fault_malformed_json,
+    _fault_missing_field,
+    _fault_duplicate_technical,
+    _fault_business_out_of_range,
+    _fault_business_duplicate,
+    _fault_statistical_spike,
+]
+
+
 def maybe_inject_fault(sensor, payload):
     """
     Inject a fault into the payload based on FAULT_RATE. Returns a tuple of
     (faulty_payload, fault_label) or (None, None) if no fault is injected.
-    Six equally-weighted fault categories, each firing on ~1/6th of FAULT_RATE:
-    the first four are pipeline-integrity faults (must be rejected before
-    Cleaner or by Cleaner); the last two are genuine anomaly signals meant
-    to reach Anomaly detector and be flagged there, not rejected upstream.
+    Each fault category has equal weight (FAULT_RATE / len(_FAULT_HANDLERS)).
     """
     roll = random.random()
-    bucket = FAULT_RATE / 6
+    bucket = FAULT_RATE / len(_FAULT_HANDLERS)
+    bucket_index = int(roll // bucket) if roll < FAULT_RATE else -1
 
-    if roll < bucket * 1:
-        return "{not valid json, oops", "malformed_json"
-
-    elif roll < bucket * 2:
-        broken = dict(payload)
-        broken.pop("unit", None)
-        return json.dumps(broken), "missing_field"
-
-    elif roll < bucket * 3:
-        last = _last_payload_cache.get(sensor["sensor_id"])
-        if last is not None:
-            return last, "duplicate_technical"
-        return None, None
-
-    elif roll < bucket * 4:
-        sensor_type = sensor["type"]
-        if sensor_type in BUSINESS_PLAUSIBLE_RANGES:
-            implausible = dict(payload)
-            _, plausible_max = BUSINESS_PLAUSIBLE_RANGES[sensor_type]
-            implausible["value"] = plausible_max * 5
-            return json.dumps(implausible), "business_out_of_range"
-        return None, None
-
-    elif roll < bucket * 5:
-        if sensor["type"] in CONTINUOUS_SENSOR_TYPES:
-            last_clean = _last_payload_cache.get(sensor["sensor_id"])
-            if last_clean is not None:
-                last_data = json.loads(last_clean)
-                business_dup = dict(payload)
-                business_dup["value"] = last_data["value"]
-                return json.dumps(business_dup), "business_duplicate"
-        return None, None
-
-    elif roll < bucket * 6:
-        # Statistical spike: jump to the sensor's own operational extreme -
-        # still within Cleaner's business-plausible range (so it reaches
-        # enriched, not dlq), but far from this sensor's recent random-walk
-        # baseline - exactly what Anomaly detector's stddev check targets.
-        if sensor["type"] in STATISTICAL_SENSOR_TYPES:
-            spike = dict(payload)
-            spike["value"] = sensor["max"] if random.random() < 0.5 else sensor["min"]
-            _last_clean_value[sensor["sensor_id"]] = spike["value"]
-            return json.dumps(spike), "statistical_spike"
-        return None, None
-
+    if 0 <= bucket_index < len(_FAULT_HANDLERS):
+        return _FAULT_HANDLERS[bucket_index](sensor, payload)
     return None, None
 
 

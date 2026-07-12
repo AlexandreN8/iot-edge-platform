@@ -5,6 +5,8 @@ from confluent_kafka import Consumer, Producer
 from business_rules import check_statistical_anomaly, check_flapping_anomaly, WINDOW_SIZE
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
+KAFKA_BOOTSTRAP_SERVERS_KEY = "bootstrap.servers"
+
 INPUT_TOPIC = "enriched"
 ANOMALY_TOPIC = "anomalie"
 GROUP_ID = "anomaly-detector-group"
@@ -41,13 +43,13 @@ def send_to_anomalie(producer, payload, reason):
 
 def run():
     consumer = Consumer({
-        "bootstrap.servers": KAFKA_BOOTSTRAP,
+        KAFKA_BOOTSTRAP_SERVERS_KEY: KAFKA_BOOTSTRAP,
         "group.id": GROUP_ID,
         "auto.offset.reset": "earliest",
         "enable.auto.commit": False,
     })
     consumer.subscribe([INPUT_TOPIC])
-    anomaly_producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP})
+    anomaly_producer = Producer({KAFKA_BOOTSTRAP_SERVERS_KEY: KAFKA_BOOTSTRAP})
     _last_values = {}
 
     print(f"Anomaly detector listening on topic '{INPUT_TOPIC}'...")
