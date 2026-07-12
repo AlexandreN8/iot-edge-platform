@@ -7,9 +7,12 @@ from business_rules import check_business_range, check_business_duplicate
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
 POSTGRES_DSN = os.environ.get("POSTGRES_DSN")
+KAFKA_BOOTSTRAP_SERVERS_KEY = "bootstrap.servers"
+
 TOPIC = "raw"
 DLQ_TOPIC = "dlq"
 ENRICHED_TOPIC = "enriched"
+
 GROUP_ID = "cleaner-group"
 
 _last_seen = {}
@@ -67,14 +70,15 @@ def run():
     pg_conn = connect_postgres_with_retry(POSTGRES_DSN)
 
     consumer = Consumer({
-        "bootstrap.servers": KAFKA_BOOTSTRAP,
+        KAFKA_BOOTSTRAP_SERVERS_KEY: KAFKA_BOOTSTRAP,
         "group.id": GROUP_ID,
         "auto.offset.reset": "earliest",
         "enable.auto.commit": False,
     })
+
     consumer.subscribe([TOPIC])
-    dlq_producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP})
-    enriched_producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP})
+    dlq_producer = Producer({KAFKA_BOOTSTRAP_SERVERS_KEY: KAFKA_BOOTSTRAP})
+    enriched_producer = Producer({KAFKA_BOOTSTRAP_SERVERS_KEY: KAFKA_BOOTSTRAP})
 
     print(f"Cleaner listening on topic '{TOPIC}'...")
     try:
