@@ -1,0 +1,4 @@
+aggregator_image_name: aggregator:local
+aggregator_container_name: aggregator
+aggregator_network_name: paas_network
+aggregator_build_context: "{{ playbook_dir }}/../../../paas/services/aggregator"

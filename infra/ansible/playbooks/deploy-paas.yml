@@ -4,3 +4,4 @@
   roles:
     - cleaner
     - anomaly_detector
+    - aggregator
