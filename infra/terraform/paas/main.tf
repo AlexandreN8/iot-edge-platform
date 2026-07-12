@@ -2,7 +2,7 @@ terraform {
   required_providers {
     docker = {
       source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+      version = "~> 3.9.0"
     }
   }
 }
@@ -102,6 +102,8 @@ resource "docker_container" "kafka_init" {
   depends_on = [docker_container.kafka]
 
   lifecycle {
+    replace_triggered_by = [docker_container.kafka.id]
+
     postcondition {
       condition     = self.exit_code == 0
       error_message = "kafka-init exited non-zero - topic creation likely failed, check `docker logs kafka-init`."
@@ -139,7 +141,7 @@ resource "docker_container" "kafka_ui" {
 
 # --- Postgres ---
 resource "docker_image" "postgres" {
-  name = "postgres:16-alpine"
+  name = "timescale/timescaledb:latest-pg16"
 }
 
 resource "docker_container" "postgres" {

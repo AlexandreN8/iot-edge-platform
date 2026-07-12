@@ -1,0 +1,31 @@
+---
+- name: Ensure Docker SDK for Python is present (via apt, avoids PEP 668)
+  ansible.builtin.apt:
+    name: python3-docker
+    state: present
+    update_cache: true
+  become: true
+
+- name: Build aggregator image
+  community.docker.docker_image:
+    name: "{{ aggregator_image_name }}"
+    build:
+      path: "{{ aggregator_build_context }}"
+    source: build
+    force_source: true
+  register: aggregator_image
+  when: container_state | default('started') != 'absent'
+
+- name: Ensure aggregator container state
+  community.docker.docker_container:
+    name: "{{ aggregator_container_name }}"
+    image: "{{ aggregator_image.image.Id if container_state | default('started') != 'absent' else omit }}"
+    networks:
+      - name: "{{ aggregator_network_name }}"
+    env:
+      KAFKA_BOOTSTRAP: "kafka:9092"
+      POSTGRES_DSN: "postgresql://{{ postgres_user }}:{{ postgres_password }}@postgres:5432/{{ postgres_db }}"
+      PYTHONUNBUFFERED: "1"
+    restart_policy: unless-stopped
+    state: "{{ container_state | default('started') }}"
+    image_name_mismatch: recreate
