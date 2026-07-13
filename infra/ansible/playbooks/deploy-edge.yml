@@ -4,3 +4,4 @@
   roles:
     - iot_devices
     - edge_processor
+    - ota_agent

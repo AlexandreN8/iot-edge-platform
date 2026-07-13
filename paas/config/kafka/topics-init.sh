@@ -40,5 +40,9 @@ create_topic "dlq" 1 1209600000           # 14 days
 # ota: compacted, not time-retained
 create_topic "ota" 1 -1 "compact"
 
+# ota_status: audit trail of update attempts, one entry per event, retained
+# like other event logs 
+create_topic "ota_status" 1 604800000      # 7 days
+
 echo "All topics created:"
 "$BIN/kafka-topics.sh" --bootstrap-server "$BOOTSTRAP" --list

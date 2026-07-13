@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        service: [edge_processor, iot_devices]
+        service: [edge_processor, iot_devices, ota_agent]
     steps:
       - uses: actions/checkout@v4
         with:
