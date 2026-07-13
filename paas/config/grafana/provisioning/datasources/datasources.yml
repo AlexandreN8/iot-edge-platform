@@ -15,4 +15,14 @@ datasources:
       database: iot
       sslmode: disable
       postgresVersion: 1600
-      timescaledb: false
+      timescaledb: true
+
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus-iot
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: false
+    editable: false
+    jsonData:
+      httpMethod: POST

@@ -31,6 +31,8 @@ jobs:
             name: aggregator
           - path: paas/services/alert_service
             name: alert_service
+          - path: paas/services/error_handler
+            name: error_handler
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -77,6 +79,10 @@ jobs:
         with:
           name: coverage-alert_service
           path: paas/services/alert_service
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-error_handler
+          path: paas/services/error_handler
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@v6
         env:
@@ -85,6 +91,6 @@ jobs:
           args: >
             -Dsonar.organization=alexandren8
             -Dsonar.projectKey=AlexandreN8_iot-edge-platform
-            -Dsonar.sources=edge/edge_processor,edge/iot_devices,paas/services/cleaner,paas/services/anomaly_detector,paas/services/aggregator,paas/services/alert_service
-            -Dsonar.python.coverage.reportPaths=edge/edge_processor/coverage.xml,edge/iot_devices/coverage.xml,paas/services/cleaner/coverage.xml,paas/services/anomaly_detector/coverage.xml,paas/services/aggregator/coverage.xml,paas/services/alert_service/coverage.xml
+            -Dsonar.sources=edge/edge_processor,edge/iot_devices,paas/services/cleaner,paas/services/anomaly_detector,paas/services/aggregator,paas/services/alert_service,paas/services/error_handler
+            -Dsonar.python.coverage.reportPaths=edge/edge_processor/coverage.xml,edge/iot_devices/coverage.xml,paas/services/cleaner/coverage.xml,paas/services/anomaly_detector/coverage.xml,paas/services/aggregator/coverage.xml,paas/services/alert_service/coverage.xml,paas/services/error_handler/coverage.xml
             -Dsonar.coverage.exclusions=**/main.py

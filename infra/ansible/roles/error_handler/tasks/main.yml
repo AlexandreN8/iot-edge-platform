@@ -1,0 +1,33 @@
+---
+- name: Ensure Docker SDK for Python is present (via apt, avoids PEP 668)
+  ansible.builtin.apt:
+    name: python3-docker
+    state: present
+    update_cache: true
+  become: true
+
+- name: Build error_handler image
+  community.docker.docker_image:
+    name: "{{ error_handler_image_name }}"
+    build:
+      path: "{{ error_handler_build_context }}"
+    source: build
+    force_source: true
+  register: error_handler_image
+  when: container_state | default('started') != 'absent'
+
+- name: Ensure error_handler container state
+  community.docker.docker_container:
+    name: "{{ error_handler_container_name }}"
+    image: "{{ error_handler_image.image.Id if container_state | default('started') != 'absent' else omit }}"
+    networks:
+      - name: "{{ error_handler_network_name }}"
+    ports:
+      - "{{ error_handler_metrics_port }}:{{ error_handler_metrics_port }}"
+    env:
+      KAFKA_BOOTSTRAP: "kafka:9092"
+      METRICS_PORT: "{{ error_handler_metrics_port | string }}"
+      PYTHONUNBUFFERED: "1"
+    restart_policy: unless-stopped
+    state: "{{ container_state | default('started') }}"
+    image_name_mismatch: recreate

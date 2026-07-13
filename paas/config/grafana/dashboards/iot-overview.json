@@ -2,7 +2,7 @@
   "title": "IoT Overview (Phase 0)",
   "uid": "iot-overview-phase0",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": true,
   "timezone": "browser",
   "time": { "from": "now-30m", "to": "now" },
@@ -34,6 +34,71 @@
           "datasource": { "type": "postgres", "uid": "postgres-iot" },
           "format": "time_series",
           "rawSql": "SELECT received_at AS \"time\", value, sensor_id AS metric FROM readings WHERE type IN ('co2','temperature','humidity','smoke') ORDER BY received_at",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Per-minute average by sensor (aggregates_minute)",
+      "type": "timeseries",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 20 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres-iot" },
+          "format": "time_series",
+          "rawSql": "SELECT window_start AS \"time\", avg_value AS value, sensor_id AS metric FROM aggregates_minute ORDER BY window_start",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Recent alerts",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres-iot" },
+          "format": "table",
+          "rawSql": "SELECT created_at, sensor_id, severity, reason, email_sent FROM alerts ORDER BY created_at DESC LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "severity" },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": { "type": "color-text" }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "critical": { "color": "red", "index": 0 } } },
+                  { "type": "value", "options": { "warning": { "color": "orange", "index": 1 } } }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "title": "DLQ rejection rate by fault type",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+          "expr": "rate(dlq_messages_total[5m])",
+          "legendFormat": "{{fault_type}}",
           "refId": "A"
         }
       ]

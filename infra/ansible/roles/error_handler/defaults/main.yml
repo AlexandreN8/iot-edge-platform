@@ -1,0 +1,5 @@
+error_handler_image_name: error_handler:local
+error_handler_container_name: error_handler
+error_handler_network_name: paas_network
+error_handler_build_context: "{{ playbook_dir }}/../../../paas/services/error_handler"
+error_handler_metrics_port: 8000
