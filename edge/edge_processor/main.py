@@ -12,7 +12,7 @@ from heartbeat import touch_heartbeat
 BROKER_HOST = os.environ.get("BROKER_HOST", "localhost")
 BROKER_PORT = int(os.environ.get("BROKER_PORT", 1883))
 DB_PATH = "buffer.db"
-HEARTBEAT_MQTT_FILE = "/tmp/heartbeat_mqtt"
+HEARTBEAT_MQTT_FILE = "/app/heartbeat_mqtt"
 
 conn = init_db(DB_PATH)
 
