@@ -9,7 +9,7 @@ COPY iot_simulator.py .
 COPY heartbeat.py .
 
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 --start-period=15s \
-  CMD find /tmp/heartbeat -mmin -1 || exit 1
+  CMD find /app/heartbeat -mmin -1 || exit 1
 
 RUN useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser:appuser /app

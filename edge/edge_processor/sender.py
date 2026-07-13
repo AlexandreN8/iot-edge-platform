@@ -10,7 +10,7 @@ POLL_INTERVAL = 5
 BATCH_SIZE = 50
 TOPIC = "raw"
 BUFFER_TTL_SECONDS = int(os.environ.get("BUFFER_TTL_SECONDS", 6 * 3600))
-HEARTBEAT_SENDER_FILE = "/tmp/heartbeat_sender"
+HEARTBEAT_SENDER_FILE = "/app/heartbeat_sender"
 
 
 def create_producer():  # pragma: no cover
