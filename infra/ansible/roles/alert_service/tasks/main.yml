@@ -1,0 +1,36 @@
+---
+- name: Ensure Docker SDK for Python is present (via apt, avoids PEP 668)
+  ansible.builtin.apt:
+    name: python3-docker
+    state: present
+    update_cache: true
+  become: true
+
+- name: Build alert_service image
+  community.docker.docker_image:
+    name: "{{ alert_service_image_name }}"
+    build:
+      path: "{{ alert_service_build_context }}"
+    source: build
+    force_source: true
+  register: alert_service_image
+  when: container_state | default('started') != 'absent'
+
+- name: Ensure alert_service container state
+  community.docker.docker_container:
+    name: "{{ alert_service_container_name }}"
+    image: "{{ alert_service_image.image.Id if container_state | default('started') != 'absent' else omit }}"
+    networks:
+      - name: "{{ alert_service_network_name }}"
+    env:
+      KAFKA_BOOTSTRAP: "kafka:9092"
+      POSTGRES_DSN: "postgresql://{{ postgres_user }}:{{ postgres_password }}@postgres:5432/{{ postgres_db }}"
+      SMTP_HOST: "smtp.gmail.com"
+      SMTP_PORT: "587"
+      SMTP_USER: "{{ smtp_user }}"
+      SMTP_PASSWORD: "{{ smtp_password }}"
+      ALERT_EMAIL_TO: "{{ alert_email_to }}"
+      PYTHONUNBUFFERED: "1"
+    restart_policy: unless-stopped
+    state: "{{ container_state | default('started') }}"
+    image_name_mismatch: recreate

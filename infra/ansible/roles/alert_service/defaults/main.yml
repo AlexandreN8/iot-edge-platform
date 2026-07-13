@@ -1,0 +1,4 @@
+alert_service_image_name: alert_service:local
+alert_service_container_name: alert_service
+alert_service_network_name: paas_network
+alert_service_build_context: "{{ playbook_dir }}/../../../paas/services/alert_service"

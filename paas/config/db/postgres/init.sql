@@ -35,3 +35,15 @@ CREATE TABLE IF NOT EXISTS aggregates_hourly (
     PRIMARY KEY (sensor_id, window_start)
 );
 SELECT create_hypertable('aggregates_hourly', 'window_start', if_not_exists => TRUE);
+
+CREATE TABLE IF NOT EXISTS alerts (
+    id SERIAL PRIMARY KEY,
+    sensor_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    value DOUBLE PRECISION,
+    reason TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    detected_at DOUBLE PRECISION NOT NULL,
+    email_sent BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
+);

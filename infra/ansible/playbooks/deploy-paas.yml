@@ -5,3 +5,4 @@
     - cleaner
     - anomaly_detector
     - aggregator
+    - alert_service

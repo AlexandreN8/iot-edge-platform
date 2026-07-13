@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [cleaner, anomaly_detector, aggregator]
+        service: [cleaner, anomaly_detector, aggregator, alert_service]
     steps:
       - uses: actions/checkout@v4
         with:
