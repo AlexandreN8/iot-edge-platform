@@ -6,3 +6,4 @@
     - anomaly_detector
     - aggregator
     - alert_service
+    - error_handler

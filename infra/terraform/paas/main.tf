@@ -255,3 +255,31 @@ resource "docker_container" "grafana" {
   depends_on = [docker_container.postgres]
   restart    = "unless-stopped"
 }
+
+
+# --- Prometheus ---
+resource "docker_image" "prometheus" {
+  name = "prom/prometheus:v3"
+}
+
+resource "docker_container" "prometheus" {
+  name  = "prometheus"
+  image = docker_image.prometheus.image_id
+
+  networks_advanced {
+    name = docker_network.paas_network.name
+  }
+
+  ports {
+    internal = 9090
+    external = 9090
+  }
+
+  volumes {
+    host_path      = abspath("${path.module}/../../../paas/config/prometheus/prometheus.yml")
+    container_path = "/etc/prometheus/prometheus.yml"
+    read_only      = true
+  }
+
+  restart = "unless-stopped"
+}
