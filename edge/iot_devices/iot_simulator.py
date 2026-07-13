@@ -3,11 +3,13 @@ import time
 import random
 import json
 import os
+from heartbeat import touch_heartbeat
 
 BROKER_HOST = os.environ.get("BROKER_HOST", "localhost")
 BROKER_PORT = int(os.environ.get("BROKER_PORT", 1883))
 INTERVAL = 5
 FAULT_RATE = 0.05  # 5% of messages are faulty, distributed across several fault types
+HEARTBEAT_FILE = "/tmp/heartbeat"
 
 SENSORS_CONFIG = [
     {"type": "co2", "sensor_id": "co2-001", "min": 400, "max": 1500, "unit": "ppm"},
@@ -184,7 +186,7 @@ def maybe_inject_flapping_burst(client, sensor):
     return True
 
 
-def connect_with_retry(client, host, port, max_retries=5):
+def connect_with_retry(client, host, port, max_retries=5):  # pragma: no cover
     for attempt in range(1, max_retries + 1):
         try:
             client.connect(host, port)
@@ -197,7 +199,7 @@ def connect_with_retry(client, host, port, max_retries=5):
     raise RuntimeError("Unable to connect to MQTT broker after several attempts")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     connect_with_retry(client, BROKER_HOST, BROKER_PORT)
     client.loop_start()
@@ -206,7 +208,7 @@ if __name__ == "__main__":
         while True:
             for sensor in SENSORS_CONFIG:
                 if maybe_inject_flapping_burst(client, sensor):
-                    continue  # skip normal publish this cycle if a flapping burst was injected
+                    continue
 
                 measure = generate_value(sensor)
                 payload = build_payload(sensor, measure)
@@ -223,6 +225,7 @@ if __name__ == "__main__":
                     _last_payload_cache[sensor["sensor_id"]] = payload_json
                     print(f"Published on {topic}: {payload}")
 
+            touch_heartbeat(HEARTBEAT_FILE)
             time.sleep(INTERVAL)
 
     except KeyboardInterrupt:
