@@ -34,6 +34,7 @@
       BROKER_HOST: "{{ broker_host }}"
       BROKER_PORT: "{{ broker_port | string }}"
       KAFKA_BOOTSTRAP: "{{ kafka_bootstrap }}"
+      BUFFER_TTL_SECONDS: "{{ buffer_ttl_seconds | default(21600) | string }}"
       PYTHONUNBUFFERED: "1"
     restart_policy: unless-stopped
     state: "{{ container_state | default('started') }}"
