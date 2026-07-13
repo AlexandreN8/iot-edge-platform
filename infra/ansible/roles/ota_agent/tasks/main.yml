@@ -1,0 +1,43 @@
+---
+- name: Ensure Docker SDK for Python is present (via apt, avoids PEP 668)
+  ansible.builtin.apt:
+    name: python3-docker
+    state: present
+    update_cache: true
+  become: true
+
+- name: Ensure last-known-good sha volume exists
+  community.docker.docker_volume:
+    name: ota_agent_data
+  when: container_state | default('started') != 'absent'
+
+- name: Build ota_agent image
+  community.docker.docker_image:
+    name: "{{ ota_agent_image_name }}"
+    build:
+      path: "{{ ota_agent_build_context }}"
+    source: build
+    force_source: true
+  register: ota_agent_image
+  when: container_state | default('started') != 'absent'
+
+- name: Ensure ota_agent container state
+  community.docker.docker_container:
+    name: "{{ ota_agent_container_name }}"
+    image: "{{ ota_agent_image.image.Id if container_state | default('started') != 'absent' else omit }}"
+    networks:
+      - name: "{{ ota_agent_network_name }}"
+    user: root  # deliberate exception - see Dockerfile comment
+    volumes:
+      - "{{ ota_agent_repo_path }}:{{ ota_agent_repo_path }}"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "ota_agent_data:/data"
+    env:
+      KAFKA_BOOTSTRAP: "{{ kafka_bootstrap }}"
+      SITE_ID: "{{ site_id | default('site-001') }}"
+      REPO_PATH: "{{ ota_agent_repo_path }}/infra/ansible"
+      LAST_GOOD_SHA_FILE: "/data/last_known_good_sha"
+      PYTHONUNBUFFERED: "1"
+    restart_policy: unless-stopped
+    state: "{{ container_state | default('started') }}"
+    image_name_mismatch: recreate

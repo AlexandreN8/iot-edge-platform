@@ -17,12 +17,15 @@ jobs:
   test-all:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - path: edge/edge_processor
             name: edge_processor
           - path: edge/iot_devices
             name: iot_devices
+          - path: edge/ota_agent
+            name: ota_agent
           - path: paas/services/cleaner
             name: cleaner
           - path: paas/services/anomaly_detector
@@ -65,6 +68,10 @@ jobs:
           path: edge/iot_devices
       - uses: actions/download-artifact@v4
         with:
+          name: coverage-ota_agent
+          path: edge/ota_agent
+      - uses: actions/download-artifact@v4
+        with:
           name: coverage-cleaner
           path: paas/services/cleaner
       - uses: actions/download-artifact@v4
@@ -91,6 +98,6 @@ jobs:
           args: >
             -Dsonar.organization=alexandren8
             -Dsonar.projectKey=AlexandreN8_iot-edge-platform
-            -Dsonar.sources=edge/edge_processor,edge/iot_devices,paas/services/cleaner,paas/services/anomaly_detector,paas/services/aggregator,paas/services/alert_service,paas/services/error_handler
-            -Dsonar.python.coverage.reportPaths=edge/edge_processor/coverage.xml,edge/iot_devices/coverage.xml,paas/services/cleaner/coverage.xml,paas/services/anomaly_detector/coverage.xml,paas/services/aggregator/coverage.xml,paas/services/alert_service/coverage.xml,paas/services/error_handler/coverage.xml
+            -Dsonar.sources=edge/edge_processor,edge/iot_devices,edge/ota_agent,paas/services/cleaner,paas/services/anomaly_detector,paas/services/aggregator,paas/services/alert_service,paas/services/error_handler
+            -Dsonar.python.coverage.reportPaths=edge/edge_processor/coverage.xml,edge/iot_devices/coverage.xml,edge/ota_agent/coverage.xml,paas/services/cleaner/coverage.xml,paas/services/anomaly_detector/coverage.xml,paas/services/aggregator/coverage.xml,paas/services/alert_service/coverage.xml,paas/services/error_handler/coverage.xml
             -Dsonar.coverage.exclusions=**/main.py

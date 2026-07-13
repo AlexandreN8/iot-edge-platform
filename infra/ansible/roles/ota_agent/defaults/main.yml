@@ -1,0 +1,5 @@
+ota_agent_image_name: ota_agent:local
+ota_agent_container_name: ota_agent
+ota_agent_network_name: iot_network
+ota_agent_build_context: "{{ playbook_dir }}/../../../edge/ota_agent"
+ota_agent_repo_path: "{{ edge_processor_repo_dest }}"
