@@ -7,10 +7,12 @@ from filtering import is_duplicate, is_valid_json
 from schema_validation import validate
 from buffer import init_db, insert
 from sender import run_sender_loop
+from heartbeat import touch_heartbeat
 
 BROKER_HOST = os.environ.get("BROKER_HOST", "localhost")
 BROKER_PORT = int(os.environ.get("BROKER_PORT", 1883))
 DB_PATH = "buffer.db"
+HEARTBEAT_MQTT_FILE = "/tmp/heartbeat_mqtt"
 
 conn = init_db(DB_PATH)
 
@@ -29,6 +31,8 @@ def connect_with_retry(client, host, port, max_retries=5):
 
 
 def on_message(client, userdata, msg):
+    touch_heartbeat(HEARTBEAT_MQTT_FILE)
+
     if not is_valid_json(msg.payload):
         print(f"Rejected (invalid JSON): {msg.topic}")
         return

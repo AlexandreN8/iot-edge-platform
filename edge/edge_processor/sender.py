@@ -3,12 +3,14 @@ import time
 import json
 from confluent_kafka import Producer
 from buffer import init_db, fetch_pending, mark_sent, purge_expired
+from heartbeat import touch_heartbeat
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
 POLL_INTERVAL = 5
 BATCH_SIZE = 50
 TOPIC = "raw"
-BUFFER_TTL_SECONDS = int(os.environ.get("BUFFER_TTL_SECONDS", 6 * 3600))  # 6h default
+BUFFER_TTL_SECONDS = int(os.environ.get("BUFFER_TTL_SECONDS", 6 * 3600))
+HEARTBEAT_SENDER_FILE = "/tmp/heartbeat_sender"
 
 
 def create_producer():  # pragma: no cover
@@ -25,11 +27,13 @@ def make_delivery_callback(conn, row_id):
     return callback
 
 
-def run_sender_loop(db_path="buffer.db", interval=POLL_INTERVAL):   # pragma: no cover
+def run_sender_loop(db_path="buffer.db", interval=POLL_INTERVAL):  # pragma: no cover
     conn = init_db(db_path)
     producer = create_producer()
 
     while True:
+        touch_heartbeat(HEARTBEAT_SENDER_FILE)
+
         purged = purge_expired(conn, BUFFER_TTL_SECONDS)
         if purged:
             print(f"Purged {purged} expired row(s) from buffer (TTL={BUFFER_TTL_SECONDS}s)")

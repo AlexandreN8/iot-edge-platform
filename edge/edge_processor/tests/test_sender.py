@@ -1,4 +1,5 @@
-from sender import make_delivery_callback
+import time
+from sender import make_delivery_callback, touch_heartbeat
 from buffer import init_db, insert, fetch_pending
 
 
@@ -29,3 +30,12 @@ def test_delivery_callback_does_not_mark_sent_on_failure():
     callback(err="some kafka error", msg=None)
 
     assert len(fetch_pending(conn)) == 1  # row still pending, not marked sent
+
+
+def test_touch_heartbeat_creates_file_with_recent_timestamp(tmp_path):
+    path = tmp_path / "heartbeat_sender"
+    touch_heartbeat(str(path))
+
+    assert path.exists()
+    written_ts = float(path.read_text())
+    assert abs(time.time() - written_ts) < 2
