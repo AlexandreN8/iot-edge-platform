@@ -7,3 +7,7 @@ pgadmin_default_password: "{{ vault_pgadmin_password }}"
 
 grafana_admin_user: admin
 grafana_admin_password: "{{ vault_grafana_admin_password }}"
+
+smtp_user: "{{ vault_smtp_user }}"
+smtp_password: "{{ vault_smtp_password }}"
+alert_email_to: "{{ vault_alert_email_to }}"
