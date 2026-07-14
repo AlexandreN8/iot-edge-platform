@@ -39,7 +39,7 @@ def run_deploy(sha):
         [
             "flock", "-n", LOCK_FILE,
             "ansible-playbook", "-i", "inventories/prod/inventory-local.ini",
-            "playbooks/deploy-edge.yml", "-e", f"deploy_branch={sha}",
+            "playbooks/deploy-edge-apps.yml", "-e", f"deploy_branch={sha}",
         ],
         cwd=REPO_PATH,
         capture_output=True,
