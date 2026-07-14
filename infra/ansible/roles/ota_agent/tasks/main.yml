@@ -13,6 +13,14 @@
     mode: "0600"
   when: container_state | default('started') != 'absent'
 
+- name: Deploy local-only inventory for OTA agent's self-invocation
+  ansible.builtin.copy:
+    dest: "{{ ota_agent_repo_path }}/infra/ansible/inventory-local.ini"
+    content: |
+      [edge]
+      localhost ansible_connection=local
+  when: container_state | default('started') != 'absent'
+
 - name: Ensure last-known-good sha volume exists
   community.docker.docker_volume:
     name: ota_agent_data
