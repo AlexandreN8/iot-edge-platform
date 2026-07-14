@@ -1,0 +1,18 @@
+name: OTA - Publish deployment to Kafka
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  publish-ota:
+    runs-on: self-hosted
+    steps:
+      - name: Publish update to ota topic
+        run: |
+          SHA="${{ github.sha }}"
+          docker exec kafka /opt/kafka/bin/kafka-console-producer.sh \
+            --broker-list localhost:9092 \
+            --topic ota \
+            --property "parse.key=true" \
+            --property "key.separator=|" <<< "${SHA}|{\"sha\": \"${SHA}\", \"wave\": [\"site-001\"]}"
