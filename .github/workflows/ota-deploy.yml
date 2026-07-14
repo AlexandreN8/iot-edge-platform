@@ -11,7 +11,7 @@ jobs:
       - name: Publish update to ota topic
         run: |
           SHA="${{ github.sha }}"
-          docker exec kafka /opt/kafka/bin/kafka-console-producer.sh \
+          docker exec -i kafka /opt/kafka/bin/kafka-console-producer.sh \
             --broker-list localhost:9092 \
             --topic ota \
             --property "parse.key=true" \
