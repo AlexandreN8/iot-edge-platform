@@ -15,10 +15,12 @@ LOCK_FILE = os.environ.get("LOCK_FILE", "/data/edge-deploy.lock")
 
 INPUT_TOPIC = "ota"
 STATUS_TOPIC = "ota_status"
-GROUP_ID = f"ota-agent-{SITE_ID}"  # unique per site - broadcast, not competing consumers
+GROUP_ID = f"ota-agent-{SITE_ID}"
 
 HEALTHCHECK_WAIT_SECONDS = 20
 HEALTHCHECK_CONTAINERS = ["mosquitto", "iot_devices", "edge_processor"]
+
+UNRESOLVABLE_SHA_MARKERS = ["unable to read tree", "failed to checkout"]
 
 
 def read_last_known_good():
@@ -33,8 +35,24 @@ def write_last_known_good(sha):
         f.write(sha)
 
 
+def clear_last_known_good():
+    """
+    Removes the recorded last-known-good sha when it turns out to be
+    unresolvable itself (e.g. rewritten/deleted git history) - without
+    this, every future failed deploy would retry rolling back to the
+    same doomed reference indefinitely.
+    """
+    if os.path.exists(LAST_GOOD_SHA_FILE):
+        os.remove(LAST_GOOD_SHA_FILE)
+
+
+def is_unresolvable_sha_error(output):
+    lowered = output.lower()
+    return any(marker in lowered for marker in UNRESOLVABLE_SHA_MARKERS)
+
+
 def run_deploy(sha):
-    """ Invokes the same Ansible playbook used for manual SSH-driven deploys, but locally on the edge host itself. """
+    """ Invokes deploy-edge-apps.yml locally - iot_devices/edge_processor only, never ota_agent itself. """
     result = subprocess.run(
         [
             "flock", "-n", LOCK_FILE,
@@ -47,19 +65,16 @@ def run_deploy(sha):
         timeout=600,
     )
     output = result.stdout + result.stderr
-    if "no hosts matched" in output.lower() or "skipping: no hosts matched" in output.lower():
+
+    if "no hosts matched" in output.lower():
         return False, f"Ansible ran but matched no hosts - inventory issue:\n{output}"
+    if is_unresolvable_sha_error(output):
+        return False, f"sha {sha} is not resolvable (deleted/rewritten in git history):\n{output}"
+
     return result.returncode == 0, output
 
 
 def check_healthy(docker_client):
-    """
-    A container counts as healthy if it's running - and, where a Docker
-    HEALTHCHECK is defined, reports "healthy" specifically. Containers
-    without a HEALTHCHECK (none currently besides mosquitto) only need
-    to be running; healthcheck-bearing ones must actively report healthy,
-    not just "starting".
-    """
     for name in HEALTHCHECK_CONTAINERS:
         try:
             container = docker_client.containers.get(name)
@@ -106,9 +121,16 @@ def apply_update(sha, docker_client, status_producer):
     if rollback_ok:
         print(f"Rolled back to sha={last_good}.")
         publish_status(status_producer, sha, "rolled_back", f"unhealthy ({detail}), reverted to {last_good}")
-    else:
-        print(f"Rollback to sha={last_good} also failed:\n{rollback_output}")
-        publish_status(status_producer, sha, "failed", f"unhealthy and rollback failed: {detail}")
+        return
+
+    print(f"Rollback to sha={last_good} also failed:\n{rollback_output}")
+    if is_unresolvable_sha_error(rollback_output):
+        print(f"Recorded last-known-good sha={last_good} is itself unresolvable - clearing it to avoid retrying a doomed rollback target on every future deploy.")
+        clear_last_known_good()
+        publish_status(status_producer, sha, "failed", f"unhealthy, rollback target {last_good} unresolvable and cleared: {detail}")
+        return
+
+    publish_status(status_producer, sha, "failed", f"unhealthy and rollback failed: {detail}")
 
 
 def publish_status(producer, sha, outcome, detail):
@@ -124,7 +146,7 @@ def run():
     consumer = Consumer({
         KAFKA_BOOTSTRAP_SERVERS_KEY: KAFKA_BOOTSTRAP,
         "group.id": GROUP_ID,
-        "auto.offset.reset": "latest",  # only future OTA messages, never replay old ones on restart
+        "auto.offset.reset": "latest",
         "enable.auto.commit": False,
     })
     consumer.subscribe([INPUT_TOPIC])
