@@ -12,6 +12,7 @@ SITE_ID = os.environ.get("SITE_ID", "site-001")
 REPO_PATH = os.environ.get("REPO_PATH", f"/home/{os.environ.get('USER', 'alex')}/iot-edge-platform/infra/ansible")
 LAST_GOOD_SHA_FILE = os.environ.get("LAST_GOOD_SHA_FILE", "/data/last_known_good_sha")
 LOCK_FILE = os.environ.get("LOCK_FILE", "/data/edge-deploy.lock")
+ENABLE_MAIN_FALLBACK = os.environ.get("ENABLE_MAIN_FALLBACK", "false").lower() == "true"
 
 INPUT_TOPIC = "ota"
 STATUS_TOPIC = "ota_status"
@@ -36,12 +37,6 @@ def write_last_known_good(sha):
 
 
 def clear_last_known_good():
-    """
-    Removes the recorded last-known-good sha when it turns out to be
-    unresolvable itself (e.g. rewritten/deleted git history) - without
-    this, every future failed deploy would retry rolling back to the
-    same doomed reference indefinitely.
-    """
     if os.path.exists(LAST_GOOD_SHA_FILE):
         os.remove(LAST_GOOD_SHA_FILE)
 
@@ -52,7 +47,6 @@ def is_unresolvable_sha_error(output):
 
 
 def run_deploy(sha):
-    """ Invokes deploy-edge-apps.yml locally - iot_devices/edge_processor only, never ota_agent itself. """
     result = subprocess.run(
         [
             "flock", "-n", LOCK_FILE,
@@ -91,6 +85,38 @@ def check_healthy(docker_client):
     return True, "all containers healthy"
 
 
+def attempt_rollback(sha, target, docker_client, status_producer, label):
+    """
+    Attempts a single rollback target and, if it succeeds AND is healthy,
+    records it and publishes the outcome. Returns True if this attempt
+    fully resolved the situation (whether or not it needed a second target
+    to get there is the caller's concern), False if the caller should try
+    the next fallback.
+    """
+    print(f"Attempting rollback to {label} sha={target}...")
+    rollback_ok, rollback_output = run_deploy(target)
+
+    if not rollback_ok:
+        print(f"Rollback to {label} sha={target} failed:\n{rollback_output}")
+        if is_unresolvable_sha_error(rollback_output) and label == "last-known-good":
+            print(f"Recorded last-known-good sha={target} is itself unresolvable - clearing it.")
+            clear_last_known_good()
+        return False, rollback_output
+
+    print(f"Waiting {HEALTHCHECK_WAIT_SECONDS}s before confirming rollback health...")
+    time.sleep(HEALTHCHECK_WAIT_SECONDS)
+    healthy, detail = check_healthy(docker_client)
+
+    if not healthy:
+        print(f"Rollback to {label} sha={target} deployed but unhealthy ({detail}).")
+        return False, detail
+
+    write_last_known_good(target)
+    print(f"Rolled back to {label} sha={target}, confirmed healthy.")
+    publish_status(status_producer, sha, "rolled_back", f"reverted to {label} sha={target}")
+    return True, detail
+
+
 def apply_update(sha, docker_client, status_producer):
     print(f"Applying update to sha={sha}...")
     deploy_ok, deploy_output = run_deploy(sha)
@@ -111,26 +137,22 @@ def apply_update(sha, docker_client, status_producer):
         return
 
     print(f"Update to sha={sha} unhealthy ({detail}), attempting rollback...")
+
     last_good = read_last_known_good()
-    if last_good is None:
-        print("No known-good sha on record - cannot roll back automatically.")
-        publish_status(status_producer, sha, "failed", f"unhealthy and no rollback target: {detail}")
+    if last_good is not None:
+        resolved, _ = attempt_rollback(sha, last_good, docker_client, status_producer, "last-known-good")
+        if resolved:
+            return
+
+    if ENABLE_MAIN_FALLBACK:
+        print("Falling back to main as last resort...")
+        resolved, fallback_detail = attempt_rollback(sha, "main", docker_client, status_producer, "main (fallback)")
+        if resolved:
+            return
+        publish_status(status_producer, sha, "failed", f"unhealthy, last-known-good and main fallback both failed: {fallback_detail}")
         return
 
-    rollback_ok, rollback_output = run_deploy(last_good)
-    if rollback_ok:
-        print(f"Rolled back to sha={last_good}.")
-        publish_status(status_producer, sha, "rolled_back", f"unhealthy ({detail}), reverted to {last_good}")
-        return
-
-    print(f"Rollback to sha={last_good} also failed:\n{rollback_output}")
-    if is_unresolvable_sha_error(rollback_output):
-        print(f"Recorded last-known-good sha={last_good} is itself unresolvable - clearing it to avoid retrying a doomed rollback target on every future deploy.")
-        clear_last_known_good()
-        publish_status(status_producer, sha, "failed", f"unhealthy, rollback target {last_good} unresolvable and cleared: {detail}")
-        return
-
-    publish_status(status_producer, sha, "failed", f"unhealthy and rollback failed: {detail}")
+    publish_status(status_producer, sha, "failed", f"unhealthy and no rollback target available: {detail}")
 
 
 def publish_status(producer, sha, outcome, detail):
@@ -152,7 +174,7 @@ def run():
     consumer.subscribe([INPUT_TOPIC])
     status_producer = Producer({KAFKA_BOOTSTRAP_SERVERS_KEY: KAFKA_BOOTSTRAP})
 
-    print(f"OTA agent ({SITE_ID}) listening on topic '{INPUT_TOPIC}'...")
+    print(f"OTA agent ({SITE_ID}) listening on topic '{INPUT_TOPIC}'... (main fallback: {'enabled' if ENABLE_MAIN_FALLBACK else 'disabled'})")
     try:
         while True:
             msg = consumer.poll(1.0)
