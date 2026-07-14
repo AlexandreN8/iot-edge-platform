@@ -11,7 +11,7 @@ KAFKA_BOOTSTRAP_SERVERS_KEY = "bootstrap.servers"
 SITE_ID = os.environ.get("SITE_ID", "site-001")
 REPO_PATH = os.environ.get("REPO_PATH", f"/home/{os.environ.get('USER', 'alex')}/iot-edge-platform/infra/ansible")
 LAST_GOOD_SHA_FILE = os.environ.get("LAST_GOOD_SHA_FILE", "/data/last_known_good_sha")
-LOCK_FILE = "/tmp/edge-deploy.lock"
+LOCK_FILE = os.environ.get("LOCK_FILE", "/data/edge-deploy.lock")
 
 INPUT_TOPIC = "ota"
 STATUS_TOPIC = "ota_status"
