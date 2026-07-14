@@ -6,6 +6,13 @@
     update_cache: true
   become: true
 
+- name: Deploy placeholder vault password file for local deploy-edge.yml invocations (never needs real PaaS secrets)
+  ansible.builtin.copy:
+    dest: "{{ ota_agent_repo_path }}/infra/ansible/.vault_pass"
+    content: "edge-local-placeholder-not-a-real-secret"
+    mode: "0600"
+  when: container_state | default('started') != 'absent'
+
 - name: Ensure last-known-good sha volume exists
   community.docker.docker_volume:
     name: ota_agent_data
@@ -37,6 +44,7 @@
       SITE_ID: "{{ site_id | default('site-001') }}"
       REPO_PATH: "{{ ota_agent_repo_path }}/infra/ansible"
       LAST_GOOD_SHA_FILE: "/data/last_known_good_sha"
+      LOCK_FILE: "/data/edge-deploy.lock"
       PYTHONUNBUFFERED: "1"
     restart_policy: unless-stopped
     state: "{{ container_state | default('started') }}"
