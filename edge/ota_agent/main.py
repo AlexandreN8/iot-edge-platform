@@ -38,7 +38,7 @@ def run_deploy(sha):
     result = subprocess.run(
         [
             "flock", "-n", LOCK_FILE,
-            "ansible-playbook", "-i", "inventory-local.ini",
+            "ansible-playbook", "-i", "inventories/prod/inventory-local.ini",
             "playbooks/deploy-edge.yml", "-e", f"deploy_branch={sha}",
         ],
         cwd=REPO_PATH,
