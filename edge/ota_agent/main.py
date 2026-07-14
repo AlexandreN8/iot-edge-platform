@@ -46,7 +46,10 @@ def run_deploy(sha):
         text=True,
         timeout=600,
     )
-    return result.returncode == 0, result.stdout + result.stderr
+    output = result.stdout + result.stderr
+    if "no hosts matched" in output.lower() or "skipping: no hosts matched" in output.lower():
+        return False, f"Ansible ran but matched no hosts - inventory issue:\n{output}"
+    return result.returncode == 0, output
 
 
 def check_healthy(docker_client):
