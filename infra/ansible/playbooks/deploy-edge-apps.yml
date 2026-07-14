@@ -1,0 +1,6 @@
+---
+- name: Deploy edge application containers only (excludes ota_agent - invoked by the OTA agent on itself, must never redeploy the agent mid-run)
+  hosts: edge
+  roles:
+    - iot_devices
+    - edge_processor
