@@ -15,7 +15,7 @@
 
 - name: Deploy local-only inventory for OTA agent's self-invocation
   ansible.builtin.copy:
-    dest: "{{ ota_agent_repo_path }}/infra/ansible/inventory-local.ini"
+    dest: "{{ ota_agent_repo_path }}/infra/ansible/inventories/prod/inventory-local.ini"
     content: |
       [edge]
       localhost ansible_connection=local
