@@ -59,6 +59,7 @@ def run_deploy(sha):
         timeout=600,
     )
     output = result.stdout + result.stderr
+    print(f"--- ansible-playbook output for sha={sha} ---\n{output}\n--- end output ---")
 
     if "no hosts matched" in output.lower():
         return False, f"Ansible ran but matched no hosts - inventory issue:\n{output}"

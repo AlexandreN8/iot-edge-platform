@@ -8,6 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN ansible-galaxy collection install community.docker
 
+RUN git config --system --add safe.directory '*'
+
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
