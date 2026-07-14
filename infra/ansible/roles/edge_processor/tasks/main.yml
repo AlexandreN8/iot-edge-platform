@@ -11,6 +11,7 @@
     repo: "{{ edge_processor_repo_url }}"
     dest: "{{ edge_processor_repo_dest }}"
     version: "{{ deploy_branch | default('main') }}"
+    refspec: "+refs/heads/*:refs/remotes/origin/*"
     force: true
   when: container_state | default('started') != 'absent'
 
@@ -19,6 +20,7 @@
     name: "{{ edge_processor_image_name }}"
     build:
       path: "{{ edge_processor_build_context }}"
+      nocache: true
     source: build
     force_source: true
   register: edge_processor_image

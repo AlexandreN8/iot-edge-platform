@@ -11,6 +11,7 @@
     repo: "{{ iot_devices_repo_url }}"
     dest: "{{ iot_devices_repo_dest }}"
     version: "{{ deploy_branch | default('main') }}"
+    refspec: "+refs/heads/*:refs/remotes/origin/*"
     force: true
   when: container_state | default('started') != 'absent'
 
@@ -19,6 +20,7 @@
     name: "{{ iot_devices_image_name }}"
     build:
       path: "{{ iot_devices_build_context }}"
+      nocache: true
     source: build
     force_source: true
   register: iot_devices_image
