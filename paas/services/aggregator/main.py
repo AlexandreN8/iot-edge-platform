@@ -10,6 +10,7 @@ from business_rules import (
     finalize_window,
     get_completed_windows,
 )
+from logging_setup import get_logger
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
 POSTGRES_DSN = os.environ.get("POSTGRES_DSN")
@@ -21,6 +22,8 @@ GROUP_ID = "aggregator-group"
 MINUTE_SECONDS = 60
 HOUR_SECONDS = 3600
 
+logger = get_logger("aggregator")
+
 _minute_accumulators = {}
 _hour_accumulators = {}
 
@@ -29,11 +32,14 @@ def connect_postgres_with_retry(dsn, max_retries=5):
     for attempt in range(1, max_retries + 1):
         try:
             conn = psycopg2.connect(dsn)
-            print("Connected to Postgres")
+            logger.info("Connected to Postgres", extra={"category": "infra"})
             return conn
         except psycopg2.OperationalError:
             wait = min(2 ** attempt, 30)
-            print(f"Postgres not ready, attempt {attempt}/{max_retries}, retrying in {wait}s")
+            logger.warning(
+                "Postgres not ready, retrying",
+                extra={"category": "infra", "fields": {"attempt": attempt, "max_retries": max_retries, "wait_seconds": wait}},
+            )
             time.sleep(wait)
     raise RuntimeError("Unable to connect to Postgres after several attempts")
 
@@ -61,7 +67,13 @@ def flush_completed_windows(conn, accumulators, window_seconds, table_name):
         acc = accumulators.pop(key)
         row = finalize_window(acc, window_seconds)
         insert_aggregate(conn, row, table_name)
-        print(f"Flushed {table_name}: {row['sensor_id']} avg={row['avg_value']:.2f} (n={row['sample_count']})")
+        logger.info(
+            "Window flushed",
+            extra={"category": "business", "fields": {
+                "table": table_name, "sensor_id": row["sensor_id"],
+                "avg_value": round(row["avg_value"], 2), "sample_count": row["sample_count"],
+            }},
+        )
 
 
 def run():
@@ -75,14 +87,14 @@ def run():
     })
     consumer.subscribe([INPUT_TOPIC])
 
-    print(f"Aggregator listening on topic '{INPUT_TOPIC}'...")
+    logger.info("Aggregator listening on topic", extra={"category": "infra", "fields": {"topic": INPUT_TOPIC}})
     try:
         while True:
             msg = consumer.poll(1.0)
 
             if msg is not None:
                 if msg.error():
-                    print(f"Consumer error: {msg.error()}")
+                    logger.error("Consumer error", extra={"category": "infra", "fields": {"error": str(msg.error())}})
                 else:
                     payload = json.loads(msg.value())
                     minute_start = get_window_start(payload["timestamp"], MINUTE_SECONDS)
@@ -98,7 +110,7 @@ def run():
             flush_completed_windows(pg_conn, _minute_accumulators, MINUTE_SECONDS, "aggregates_minute")
             flush_completed_windows(pg_conn, _hour_accumulators, HOUR_SECONDS, "aggregates_hourly")
     except KeyboardInterrupt:
-        print("Shutdown requested...")
+        logger.info("Shutdown requested", extra={"category": "infra"})
     finally:
         consumer.close()
         pg_conn.close()
