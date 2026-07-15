@@ -4,6 +4,7 @@ import time
 from confluent_kafka import Consumer
 from prometheus_client import start_http_server, Counter, Gauge
 from business_rules import classify_fault_type
+from logging_setup import get_logger
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
 KAFKA_BOOTSTRAP_SERVERS_KEY = "bootstrap.servers"
@@ -11,6 +12,8 @@ METRICS_PORT = int(os.environ.get("METRICS_PORT", 8000))
 
 INPUT_TOPIC = "dlq"
 GROUP_ID = "error-handler-group"
+
+logger = get_logger("error_handler")
 
 dlq_messages_total = Counter(
     "dlq_messages_total",
@@ -26,7 +29,10 @@ dlq_last_rejection_timestamp = Gauge(
 
 def run():
     start_http_server(METRICS_PORT)
-    print(f"Error handler exposing metrics on :{METRICS_PORT}/metrics")
+    logger.info(
+        "Error handler exposing metrics",
+        extra={"category": "infra", "fields": {"port": METRICS_PORT}}
+    )
 
     consumer = Consumer({
         KAFKA_BOOTSTRAP_SERVERS_KEY: KAFKA_BOOTSTRAP,
@@ -36,14 +42,21 @@ def run():
     })
     consumer.subscribe([INPUT_TOPIC])
 
-    print(f"Error handler listening on topic '{INPUT_TOPIC}'...")
+    logger.info(
+        "Error handler listening on topic",
+        extra={"category": "infra", "fields": {"topic": INPUT_TOPIC}}
+    )
+    
     try:
         while True:
             msg = consumer.poll(1.0)
             if msg is None:
                 continue
             if msg.error():
-                print(f"Consumer error: {msg.error()}")
+                logger.error(
+                    "Consumer error",
+                    extra={"category": "infra", "fields": {"error": str(msg.error())}}
+                )
                 continue
 
             dlq_event = json.loads(msg.value())
@@ -54,10 +67,16 @@ def run():
             dlq_messages_total.labels(fault_type=fault_type, rejected_by=rejected_by).inc()
             dlq_last_rejection_timestamp.labels(fault_type=fault_type).set(time.time())
 
-            print(f"Recorded DLQ event: {fault_type} (rejected_by={rejected_by})")
+            logger.info(
+                "Recorded DLQ event",
+                extra={
+                    "category": "business", 
+                    "fields": {"fault_type": fault_type, "rejected_by": rejected_by}
+                }
+            )
             consumer.commit(msg)
     except KeyboardInterrupt:
-        print("Shutdown requested...")
+        logger.info("Shutdown requested", extra={"category": "infra"})
     finally:
         consumer.close()
 
