@@ -3,6 +3,7 @@ import json
 import time
 from confluent_kafka import Consumer, Producer
 from business_rules import check_statistical_anomaly, check_flapping_anomaly, WINDOW_SIZE
+from logging_setup import get_logger
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
 KAFKA_BOOTSTRAP_SERVERS_KEY = "bootstrap.servers"
@@ -10,6 +11,8 @@ KAFKA_BOOTSTRAP_SERVERS_KEY = "bootstrap.servers"
 INPUT_TOPIC = "enriched"
 ANOMALY_TOPIC = "anomalie"
 GROUP_ID = "anomaly-detector-group"
+
+logger = get_logger("anomaly_detector")
 
 _value_history = {}       # sensor_id -> [recent values] (types continuous)
 _transition_history = {}  # sensor_id -> [timestamps of recent transitions] (types binary)
@@ -52,26 +55,32 @@ def run():
     anomaly_producer = Producer({KAFKA_BOOTSTRAP_SERVERS_KEY: KAFKA_BOOTSTRAP})
     _last_values = {}
 
-    print(f"Anomaly detector listening on topic '{INPUT_TOPIC}'...")
+    logger.info("Anomaly detector listening on topic", extra={"category": "infra", "fields": {"topic": INPUT_TOPIC}})
     try:
         while True:
             msg = consumer.poll(1.0)
             if msg is None:
                 continue
             if msg.error():
-                print(f"Consumer error: {msg.error()}")
+                logger.error("Consumer error", extra={"category": "infra", "fields": {"error": str(msg.error())}})
                 continue
 
             payload = json.loads(msg.value())
 
             ok, reason = check_statistical_anomaly(payload, _value_history)
             if not ok:
-                print(f"Anomaly detected (statistical): {reason}")
+                logger.info(
+                    "Anomaly detected: statistical",
+                    extra={"category": "business", "fields": {"sensor_id": payload["sensor_id"], "reason": reason}},
+                )
                 send_to_anomalie(anomaly_producer, payload, reason)
 
             ok_flap, reason_flap = check_flapping_anomaly(payload, _transition_history)
             if not ok_flap:
-                print(f"Anomaly detected (flapping): {reason_flap}")
+                logger.info(
+                    "Anomaly detected: flapping",
+                    extra={"category": "business", "fields": {"sensor_id": payload["sensor_id"], "reason": reason_flap}},
+                )
                 send_to_anomalie(anomaly_producer, payload, reason_flap)
 
             update_value_history(payload["sensor_id"], payload["value"])
@@ -79,7 +88,7 @@ def run():
 
             consumer.commit(msg)
     except KeyboardInterrupt:
-        print("Shutdown requested...")
+        logger.info("Shutdown requested", extra={"category": "infra"})
     finally:
         consumer.close()
 
