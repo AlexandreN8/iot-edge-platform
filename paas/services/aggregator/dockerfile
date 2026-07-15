@@ -11,6 +11,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --only-binary=:all: -r requirements.txt
 
+COPY logging_setup.py .
 COPY main.py .
 COPY business_rules.py .
 
