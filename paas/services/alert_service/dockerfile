@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
+COPY logging_setup.py .
 COPY requirements.txt .
 RUN pip install --no-cache-dir --only-binary=:all: -r requirements.txt
 
