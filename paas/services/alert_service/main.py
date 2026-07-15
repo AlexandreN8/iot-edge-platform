@@ -5,6 +5,7 @@ import smtplib
 from confluent_kafka import Consumer
 import psycopg2
 from business_rules import classify_severity, should_send_email, build_email_content
+from logging_setup import get_logger
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
 KAFKA_BOOTSTRAP_SERVERS_KEY = "bootstrap.servers"
@@ -19,6 +20,8 @@ ALERT_EMAIL_TO = os.environ.get("ALERT_EMAIL_TO")
 INPUT_TOPIC = "anomalie"
 GROUP_ID = "alert-service-group"
 
+logger = get_logger("alert_service")
+
 _last_email_sent = {}
 _last_global_email_sent = None
 
@@ -27,11 +30,14 @@ def connect_postgres_with_retry(dsn, max_retries=5):
     for attempt in range(1, max_retries + 1):
         try:
             conn = psycopg2.connect(dsn)
-            print("Connected to Postgres")
+            logger.info("Connected to Postgres", extra={"category": "infra"})
             return conn
         except psycopg2.OperationalError:
             wait = min(2 ** attempt, 30)
-            print(f"Postgres not ready, attempt {attempt}/{max_retries}, retrying in {wait}s")
+            logger.warning(
+                "Postgres not ready, retrying",
+                extra={"category": "infra", "fields": {"attempt": attempt, "max_retries": max_retries, "wait_seconds": wait}},
+            )
             time.sleep(wait)
     raise RuntimeError("Unable to connect to Postgres after several attempts")
 
@@ -75,14 +81,14 @@ def run():
     })
     consumer.subscribe([INPUT_TOPIC])
 
-    print(f"Alert service listening on topic '{INPUT_TOPIC}'...")
+    logger.info("Alert service listening on topic", extra={"category": "infra", "fields": {"topic": INPUT_TOPIC}})
     try:
         while True:
             msg = consumer.poll(1.0)
             if msg is None:
                 continue
             if msg.error():
-                print(f"Consumer error: {msg.error()}")
+                logger.error("Consumer error", extra={"category": "infra", "fields": {"error": str(msg.error())}})
                 continue
 
             anomaly = json.loads(msg.value())
@@ -102,15 +108,21 @@ def run():
                     send_email(subject, plain_body, html_body)
                     _last_email_sent[sensor_id] = now
                     _last_global_email_sent = now
-                    print(f"Email sent for {sensor_id} ({severity})")
+                    logger.info(
+                        "Email sent", 
+                        extra={"category": "business", "fields": {"sensor_id": sensor_id, "severity": severity}}
+                    )
                 except smtplib.SMTPException as e:
-                    print(f"Email failed for {sensor_id}: {e}")
+                    logger.error(
+                        "Email failed", 
+                        extra={"category": "business", "fields": {"sensor_id": sensor_id, "error": str(e)}}
+                    )
                     send_now = False
 
             insert_alert(pg_conn, sensor_id, sensor_type, value, reason, severity, anomaly["detected_at"], send_now)
             consumer.commit(msg)
     except KeyboardInterrupt:
-        print("Shutdown requested...")
+        logger.info("Shutdown requested...", extra={"category": "infra"})
     finally:
         consumer.close()
         pg_conn.close()
