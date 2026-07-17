@@ -65,3 +65,45 @@ resource "docker_container" "broker_mqtt" {
 
   restart = "unless-stopped"
 }
+
+
+# --- Fluent Bit ---
+resource "docker_image" "fluent_bit" {
+  name = "fluent/fluent-bit:4.2"
+}
+
+resource "docker_container" "fluent_bit" {
+  name  = "fluent-bit"
+  image = docker_image.fluent_bit.image_id
+
+  networks_advanced {
+    name = docker_network.edge_network.name
+  }
+
+  ports {
+    internal = 24224
+    external = 24224
+  }
+
+  upload {
+    content = file("${path.module}/../../../edge/config/fluent-bit/fluent-bit.conf")
+    file    = "/fluent-bit/etc/fluent-bit.conf"
+  }
+
+  upload {
+    content = file("${path.module}/../../../edge/config/fluent-bit/parsers.conf")
+    file    = "/fluent-bit/etc/parsers.conf"
+  }
+
+  lifecycle {
+    replace_triggered_by = [
+      terraform_data.fluent_bit_config_hash
+    ]
+  }
+
+  restart = "unless-stopped"
+}
+
+resource "terraform_data" "fluent_bit_config_hash" {
+  input = filesha256("${path.module}/../../../edge/config/fluent-bit/fluent-bit.conf")
+}
