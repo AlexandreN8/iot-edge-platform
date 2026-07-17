@@ -4,6 +4,7 @@ import time
 import subprocess
 from confluent_kafka import Consumer, Producer
 from business_rules import is_targeted, format_status
+from logging_setup import get_logger
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
 KAFKA_BOOTSTRAP_SERVERS_KEY = "bootstrap.servers"
@@ -22,6 +23,8 @@ HEALTHCHECK_WAIT_SECONDS = 20
 HEALTHCHECK_CONTAINERS = ["mosquitto", "iot_devices", "edge_processor"]
 
 UNRESOLVABLE_SHA_MARKERS = ["unable to read tree", "failed to checkout"]
+
+logger = get_logger("ota_agent")
 
 
 def read_last_known_good():
@@ -59,7 +62,10 @@ def run_deploy(sha):
         timeout=600,
     )
     output = result.stdout + result.stderr
-    print(f"--- ansible-playbook output for sha={sha} ---\n{output}\n--- end output ---")
+    logger.info(
+        "ansible-playbook run completed",
+        extra={"category": "infra", "fields": {"sha": sha, "returncode": result.returncode, "output": output}},
+    )
 
     if "no hosts matched" in output.lower():
         return False, f"Ansible ran but matched no hosts - inventory issue:\n{output}"
@@ -87,57 +93,74 @@ def check_healthy(docker_client):
 
 
 def attempt_rollback(sha, target, docker_client, status_producer, label):
-    """
-    Attempts a single rollback target and, if it succeeds AND is healthy,
-    records it and publishes the outcome. Returns True if this attempt
-    fully resolved the situation (whether or not it needed a second target
-    to get there is the caller's concern), False if the caller should try
-    the next fallback.
-    """
-    print(f"Attempting rollback to {label} sha={target}...")
+    logger.info(
+        "Attempting rollback",
+        extra={"category": "business", "fields": {"target_label": label, "target_sha": target, "original_sha": sha}},
+    )
     rollback_ok, rollback_output = run_deploy(target)
 
     if not rollback_ok:
-        print(f"Rollback to {label} sha={target} failed:\n{rollback_output}")
+        logger.warning(
+            "Rollback deploy failed",
+            extra={"category": "business", "fields": {"target_label": label, "target_sha": target}},
+        )
         if is_unresolvable_sha_error(rollback_output) and label == "last-known-good":
-            print(f"Recorded last-known-good sha={target} is itself unresolvable - clearing it.")
+            logger.warning(
+                "Recorded last-known-good sha is itself unresolvable - clearing it",
+                extra={"category": "business", "fields": {"target_sha": target}},
+            )
             clear_last_known_good()
         return False, rollback_output
 
-    print(f"Waiting {HEALTHCHECK_WAIT_SECONDS}s before confirming rollback health...")
+    logger.info(
+        "Waiting before confirming rollback health",
+        extra={"category": "infra", "fields": {"wait_seconds": HEALTHCHECK_WAIT_SECONDS}},
+    )
     time.sleep(HEALTHCHECK_WAIT_SECONDS)
     healthy, detail = check_healthy(docker_client)
 
     if not healthy:
-        print(f"Rollback to {label} sha={target} deployed but unhealthy ({detail}).")
+        logger.warning(
+            "Rollback deployed but unhealthy",
+            extra={"category": "business", "fields": {"target_label": label, "target_sha": target, "detail": detail}},
+        )
         return False, detail
 
     write_last_known_good(target)
-    print(f"Rolled back to {label} sha={target}, confirmed healthy.")
+    logger.info(
+        "Rollback succeeded, confirmed healthy",
+        extra={"category": "business", "fields": {"target_label": label, "target_sha": target}},
+    )
     publish_status(status_producer, sha, "rolled_back", f"reverted to {label} sha={target}")
     return True, detail
 
 
 def apply_update(sha, docker_client, status_producer):
-    print(f"Applying update to sha={sha}...")
+    logger.info("Applying update", extra={"category": "business", "fields": {"sha": sha}})
     deploy_ok, deploy_output = run_deploy(sha)
 
     if not deploy_ok:
-        print(f"Deploy failed for sha={sha}:\n{deploy_output}")
+        logger.warning("Deploy failed", extra={"category": "business", "fields": {"sha": sha}})
         publish_status(status_producer, sha, "failed", "ansible-playbook run failed")
         return
 
-    print(f"Waiting {HEALTHCHECK_WAIT_SECONDS}s before healthcheck...")
+    logger.info(
+        "Waiting before healthcheck",
+        extra={"category": "infra", "fields": {"wait_seconds": HEALTHCHECK_WAIT_SECONDS}},
+    )
     time.sleep(HEALTHCHECK_WAIT_SECONDS)
 
     healthy, detail = check_healthy(docker_client)
     if healthy:
         write_last_known_good(sha)
-        print(f"Update to sha={sha} succeeded and is healthy.")
+        logger.info("Update succeeded and is healthy", extra={"category": "business", "fields": {"sha": sha}})
         publish_status(status_producer, sha, "success", detail)
         return
 
-    print(f"Update to sha={sha} unhealthy ({detail}), attempting rollback...")
+    logger.warning(
+        "Update unhealthy, attempting rollback",
+        extra={"category": "business", "fields": {"sha": sha, "detail": detail}},
+    )
 
     last_good = read_last_known_good()
     if last_good is not None:
@@ -146,7 +169,7 @@ def apply_update(sha, docker_client, status_producer):
             return
 
     if ENABLE_MAIN_FALLBACK:
-        print("Falling back to main as last resort...")
+        logger.info("Falling back to main as last resort", extra={"category": "business", "fields": {"sha": sha}})
         resolved, fallback_detail = attempt_rollback(sha, "main", docker_client, status_producer, "main (fallback)")
         if resolved:
             return
@@ -175,14 +198,17 @@ def run():
     consumer.subscribe([INPUT_TOPIC])
     status_producer = Producer({KAFKA_BOOTSTRAP_SERVERS_KEY: KAFKA_BOOTSTRAP})
 
-    print(f"OTA agent ({SITE_ID}) listening on topic '{INPUT_TOPIC}'... (main fallback: {'enabled' if ENABLE_MAIN_FALLBACK else 'disabled'})")
+    logger.info(
+        "OTA agent listening on topic",
+        extra={"category": "infra", "fields": {"topic": INPUT_TOPIC, "main_fallback_enabled": ENABLE_MAIN_FALLBACK}},
+    )
     try:
         while True:
             msg = consumer.poll(1.0)
             if msg is None:
                 continue
             if msg.error():
-                print(f"Consumer error: {msg.error()}")
+                logger.error("Consumer error", extra={"category": "infra", "fields": {"error": str(msg.error())}})
                 continue
 
             update = json.loads(msg.value())
@@ -190,14 +216,17 @@ def run():
             wave = update.get("wave", [])
 
             if not is_targeted(SITE_ID, wave):
-                print(f"Update {sha} not targeted at {SITE_ID}, skipping.")
+                logger.info(
+                    "Update not targeted at this site, skipping",
+                    extra={"category": "business", "fields": {"sha": sha, "site_id": SITE_ID}},
+                )
                 consumer.commit(msg)
                 continue
 
             apply_update(sha, docker_client, status_producer)
             consumer.commit(msg)
     except KeyboardInterrupt:
-        print("Shutdown requested...")
+        logger.info("Shutdown requested", extra={"category": "infra"})
     finally:
         consumer.close()
 
