@@ -4,6 +4,7 @@ import json
 from confluent_kafka import Producer
 from buffer import init_db, fetch_pending, mark_sent, purge_expired
 from heartbeat import touch_heartbeat
+from logging_setup import get_logger
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
 POLL_INTERVAL = 5
@@ -11,6 +12,8 @@ BATCH_SIZE = 50
 TOPIC = "raw"
 BUFFER_TTL_SECONDS = int(os.environ.get("BUFFER_TTL_SECONDS", 6 * 3600))
 HEARTBEAT_SENDER_FILE = "/app/heartbeat_sender"
+
+logger = get_logger("edge_processor")
 
 
 def create_producer():  # pragma: no cover
@@ -20,10 +23,18 @@ def create_producer():  # pragma: no cover
 def make_delivery_callback(conn, row_id):
     def callback(err, msg):
         if err is not None:
-            print(f"Delivery failed for row {row_id}: {err}")
+            logger.warning(
+                "Delivery failed",
+                extra={"category": "infra", "fields": {"row_id": row_id, "error": str(err)}},
+            )
         else:
             mark_sent(conn, row_id)
-            print(f"Delivered row {row_id} -> {msg.topic()} [partition {msg.partition()}]")
+            logger.info(
+                "Reading delivered to Kafka",
+                extra={"category": "business", "fields": {
+                    "row_id": row_id, "topic": msg.topic(), "partition": msg.partition(),
+                }},
+            )
     return callback
 
 
@@ -36,7 +47,10 @@ def run_sender_loop(db_path="buffer.db", interval=POLL_INTERVAL):  # pragma: no 
 
         purged = purge_expired(conn, BUFFER_TTL_SECONDS)
         if purged:
-            print(f"Purged {purged} expired row(s) from buffer (TTL={BUFFER_TTL_SECONDS}s)")
+            logger.info(
+                "Purged expired buffer rows",
+                extra={"category": "infra", "fields": {"purged_count": purged, "ttl_seconds": BUFFER_TTL_SECONDS}},
+            )
 
         rows = fetch_pending(conn, limit=BATCH_SIZE)
         for row_id, payload_json in rows:

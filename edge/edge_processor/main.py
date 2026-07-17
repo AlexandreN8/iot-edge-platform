@@ -8,12 +8,14 @@ from schema_validation import validate
 from buffer import init_db, insert
 from sender import run_sender_loop
 from heartbeat import touch_heartbeat
+from logging_setup import get_logger
 
 BROKER_HOST = os.environ.get("BROKER_HOST", "localhost")
 BROKER_PORT = int(os.environ.get("BROKER_PORT", 1883))
 DB_PATH = "buffer.db"
 HEARTBEAT_MQTT_FILE = "/app/heartbeat_mqtt"
 
+logger = get_logger("edge_processor")
 conn = init_db(DB_PATH)
 
 
@@ -21,11 +23,14 @@ def connect_with_retry(client, host, port, max_retries=5):
     for attempt in range(1, max_retries + 1):
         try:
             client.connect(host, port)
-            print(f"Connected to {host}:{port}")
+            logger.info("Connected to broker", extra={"category": "infra", "fields": {"host": host, "port": port}})
             return
         except ConnectionRefusedError:
             wait = min(2 ** attempt, 30)
-            print(f"Connection refused, attempt {attempt}/{max_retries}, retrying in {wait}s")
+            logger.warning(
+                "Connection refused, retrying",
+                extra={"category": "infra", "fields": {"attempt": attempt, "max_retries": max_retries, "wait_seconds": wait}},
+            )
             time.sleep(wait)
     raise RuntimeError("Unable to connect to MQTT broker after several attempts")
 
@@ -34,17 +39,22 @@ def on_message(client, userdata, msg):
     touch_heartbeat(HEARTBEAT_MQTT_FILE)
 
     if not is_valid_json(msg.payload):
-        print(f"Rejected (invalid JSON): {msg.topic}")
+        logger.info("Rejected: invalid JSON", extra={"category": "infra", "fields": {"topic": msg.topic}})
         return
     if is_duplicate(msg.payload):
-        print(f"Rejected (duplicate): {msg.topic}")
+        logger.info("Rejected: duplicate", extra={"category": "infra", "fields": {"topic": msg.topic}})
         return
     payload = json.loads(msg.payload)
     if not validate(payload):
-        print(f"Rejected (invalid schema): {payload}")
+        logger.info("Rejected: invalid schema", extra={"category": "infra", "fields": {"payload": payload}})
         return
     insert(conn, json.dumps(payload))
-    print(f"Buffered: {payload}")
+    logger.info(
+        "Reading buffered",
+        extra={"category": "business", "fields": {
+            "sensor_id": payload.get("sensor_id"), "type": payload.get("type"), "value": payload.get("value"),
+        }},
+    )
 
 
 if __name__ == "__main__":
