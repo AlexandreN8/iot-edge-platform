@@ -22,6 +22,10 @@
     image: "{{ alert_service_image.image.Id if container_state | default('started') != 'absent' else omit }}"
     networks:
       - name: "{{ alert_service_network_name }}"
+    log_driver: fluentd
+    log_options:
+      fluentd-address: "localhost:24224"
+      tag: "cleaner"
     env:
       KAFKA_BOOTSTRAP: "kafka:9092"
       POSTGRES_DSN: "postgresql://{{ postgres_user }}:{{ postgres_password }}@postgres:5432/{{ postgres_db }}"

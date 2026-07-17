@@ -32,6 +32,10 @@
     image: "{{ iot_devices_image.image.Id if container_state | default('started') != 'absent' else omit }}"
     networks:
       - name: "{{ iot_devices_network_name }}"
+    log_driver: fluentd
+    log_options:
+      fluentd-address: "localhost:24224"
+      tag: "cleaner"
     env:
       BROKER_HOST: "{{ broker_host }}"
       BROKER_PORT: "{{ broker_port | string }}"

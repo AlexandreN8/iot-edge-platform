@@ -22,6 +22,10 @@
     image: "{{ anomaly_detector_image.image.Id if container_state | default('started') != 'absent' else omit }}"
     networks:
       - name: "{{ anomaly_detector_network_name }}"
+    log_driver: fluentd
+    log_options:
+      fluentd-address: "localhost:24224"
+      tag: "cleaner"
     env:
       KAFKA_BOOTSTRAP: "kafka:9092"
       PYTHONUNBUFFERED: "1"

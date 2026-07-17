@@ -22,6 +22,10 @@
     image: "{{ error_handler_image.image.Id if container_state | default('started') != 'absent' else omit }}"
     networks:
       - name: "{{ error_handler_network_name }}"
+    log_driver: fluentd
+    log_options:
+      fluentd-address: "localhost:24224"
+      tag: "cleaner"
     ports:
       - "{{ error_handler_metrics_port }}:{{ error_handler_metrics_port }}"
     env:

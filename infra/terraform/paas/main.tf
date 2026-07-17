@@ -283,3 +283,86 @@ resource "docker_container" "prometheus" {
 
   restart = "unless-stopped"
 }
+
+
+# --- Loki ---
+resource "docker_image" "loki" {
+  name = "grafana/loki:3.7.2"
+}
+
+resource "docker_volume" "loki_data" {
+  name = "loki_data"
+}
+
+resource "docker_container" "loki" {
+  name  = "loki"
+  image = docker_image.loki.image_id
+
+  networks_advanced {
+    name = docker_network.paas_network.name
+  }
+
+  ports {
+    internal = 3100
+    external = 3100
+  }
+
+  volumes {
+    volume_name    = docker_volume.loki_data.name
+    container_path = "/loki"
+  }
+
+  volumes {
+    host_path      = abspath("${path.module}/../../../paas/config/loki/loki-config.yaml")
+    container_path = "/etc/loki/local-config.yaml"
+    read_only      = true
+  }
+
+  restart = "unless-stopped"
+}
+
+
+# --- Fluent Bit ---
+resource "docker_image" "fluent_bit" {
+  name = "fluent/fluent-bit:4.2"
+}
+
+resource "docker_container" "fluent_bit" {
+  name  = "fluent-bit"
+  image = docker_image.fluent_bit.image_id
+
+  networks_advanced {
+    name = docker_network.paas_network.name
+  }
+
+  ports {
+    internal = 24224
+    external = 24224
+  }
+
+  volumes {
+    host_path      = abspath("${path.module}/../../../paas/config/fluent-bit/fluent-bit.conf")
+    container_path = "/fluent-bit/etc/fluent-bit.conf"
+    read_only      = true
+  }
+
+  volumes {
+    host_path      = abspath("${path.module}/../../../paas/config/fluent-bit/parsers.conf")
+    container_path = "/fluent-bit/etc/parsers.conf"
+    read_only      = true
+  }
+
+  lifecycle {
+    replace_triggered_by = [
+      terraform_data.fluent_bit_config_hash
+    ]
+  }
+
+  restart = "unless-stopped"
+
+  depends_on = [docker_container.loki]
+}
+
+resource "terraform_data" "fluent_bit_config_hash" {
+  input = filesha256("${path.module}/../../../paas/config/fluent-bit/fluent-bit.conf")
+}

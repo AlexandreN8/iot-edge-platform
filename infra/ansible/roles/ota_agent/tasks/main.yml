@@ -42,6 +42,10 @@
     image: "{{ ota_agent_image.image.Id if container_state | default('started') != 'absent' else omit }}"
     networks:
       - name: "{{ ota_agent_network_name }}"
+    log_driver: fluentd
+    log_options:
+      fluentd-address: "localhost:24224"
+      tag: "cleaner"
     user: root  # deliberate exception - see Dockerfile comment
     volumes:
       - "{{ ota_agent_repo_path }}:{{ ota_agent_repo_path }}"
