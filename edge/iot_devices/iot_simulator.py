@@ -4,12 +4,15 @@ import random
 import json
 import os
 from heartbeat import touch_heartbeat
+from logging_setup import get_logger
 
 BROKER_HOST = os.environ.get("BROKER_HOST", "localhost")
 BROKER_PORT = int(os.environ.get("BROKER_PORT", 1883))
 INTERVAL = 5
 FAULT_RATE = 0.05  # 5% of messages are faulty, distributed across several fault types
 HEARTBEAT_FILE = "/app/heartbeat"
+
+logger = get_logger("iot_devices")
 
 SENSORS_CONFIG = [
     {"type": "co2", "sensor_id": "co2-001", "min": 400, "max": 1500, "unit": "ppm"},
@@ -173,14 +176,20 @@ def maybe_inject_flapping_burst(client, sensor):
     if random.random() >= FLAPPING_BURST_PROBABILITY:
         return False
 
-    print(f"[FAULT: flapping_burst] Starting rapid toggle burst on {sensor['sensor_id']}")
+    logger.info(
+        "Flapping burst starting",
+        extra={"category": "business", "fields": {"sensor_id": sensor["sensor_id"], "fault_injected": True, "fault_type": "flapping_burst"}},
+    )
     state = _last_opening_state.get(sensor["sensor_id"], 0)
     topic = f"sensors/{sensor['sensor_id']}"
     for _ in range(FLAPPING_BURST_TOGGLES):
         state = 1 - state
         payload = build_payload(sensor, state)
         client.publish(topic, json.dumps(payload), qos=1)
-        print(f"[FAULT: flapping_burst] Published on {topic}: {payload}")
+        logger.info(
+            "Flapping burst message published",
+            extra={"category": "business", "fields": {"topic": topic, "value": state, "fault_injected": True}},
+        )
         time.sleep(FLAPPING_BURST_DELAY)
     _last_opening_state[sensor["sensor_id"]] = state
     return True
@@ -190,11 +199,14 @@ def connect_with_retry(client, host, port, max_retries=5):  # pragma: no cover
     for attempt in range(1, max_retries + 1):
         try:
             client.connect(host, port)
-            print(f"Connected to {host}:{port}")
+            logger.info("Connected to broker", extra={"category": "infra", "fields": {"host": host, "port": port}})
             return
         except ConnectionRefusedError:
             wait = min(2 ** attempt, 30)
-            print(f"Connection refused, attempt {attempt}/{max_retries}, retrying in {wait}s")
+            logger.warning(
+                "Connection refused, retrying",
+                extra={"category": "infra", "fields": {"attempt": attempt, "max_retries": max_retries, "wait_seconds": wait}},
+            )
             time.sleep(wait)
     raise RuntimeError("Unable to connect to MQTT broker after several attempts")
 
@@ -219,17 +231,25 @@ if __name__ == "__main__":  # pragma: no cover
 
                 if faulty_message is not None:
                     client.publish(topic, faulty_message, qos=1)
-                    print(f"[FAULT: {fault_label}] Published on {topic}")
+                    logger.info(
+                        "Fault injected",
+                        extra={"category": "business", "fields": {"topic": topic, "fault_type": fault_label, "fault_injected": True}},
+                    )
                 else:
                     client.publish(topic, payload_json, qos=1)
                     _last_payload_cache[sensor["sensor_id"]] = payload_json
-                    print(f"Published on {topic}: {payload}")
+                    logger.info(
+                        "Reading published",
+                        extra={"category": "business", "fields": {
+                            "topic": topic, "sensor_id": payload["sensor_id"], "value": payload["value"], "fault_injected": False,
+                        }},
+                    )
 
             touch_heartbeat(HEARTBEAT_FILE)
             time.sleep(INTERVAL)
 
     except KeyboardInterrupt:
-        print("Shutdown requested...")
+        logger.info("Shutdown requested", extra={"category": "infra"})
     finally:
         client.loop_stop()
         client.disconnect()
