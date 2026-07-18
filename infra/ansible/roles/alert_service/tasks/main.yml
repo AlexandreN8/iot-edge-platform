@@ -29,6 +29,7 @@
     env:
       KAFKA_BOOTSTRAP: "kafka:9092"
       POSTGRES_DSN: "postgresql://{{ postgres_user }}:{{ postgres_password }}@postgres:5432/{{ postgres_db }}"
+      OTEL_EXPORTER_ENDPOINT: "otel-collector:4317"
       SMTP_HOST: "smtp.gmail.com"
       SMTP_PORT: "587"
       SMTP_USER: "{{ smtp_user }}"
