@@ -11,6 +11,7 @@ from business_rules import (
     get_completed_windows,
 )
 from logging_setup import get_logger
+from tracing_setup import get_tracer, extract_trace_context
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
 POSTGRES_DSN = os.environ.get("POSTGRES_DSN")
@@ -23,6 +24,7 @@ MINUTE_SECONDS = 60
 HOUR_SECONDS = 3600
 
 logger = get_logger("aggregator")
+tracer = get_tracer("aggregator")
 
 _minute_accumulators = {}
 _hour_accumulators = {}
@@ -66,14 +68,23 @@ def flush_completed_windows(conn, accumulators, window_seconds, table_name):
     for key in completed_keys:
         acc = accumulators.pop(key)
         row = finalize_window(acc, window_seconds)
-        insert_aggregate(conn, row, table_name)
-        logger.info(
-            "Window flushed",
-            extra={"category": "business", "fields": {
-                "table": table_name, "sensor_id": row["sensor_id"],
-                "avg_value": round(row["avg_value"], 2), "sample_count": row["sample_count"],
-            }},
-        )
+
+        with tracer.start_as_current_span("aggregator.flush_window") as span:
+            # No parent context: this span aggregates many individual
+            # messages/traces into one window - it doesn't
+            # belong to any single one of them
+            span.set_attribute("table", table_name)
+            span.set_attribute("sensor_id", row["sensor_id"])
+            span.set_attribute("sample_count", row["sample_count"])
+
+            insert_aggregate(conn, row, table_name)
+            logger.info(
+                "Window flushed",
+                extra={"category": "business", "fields": {
+                    "table": table_name, "sensor_id": row["sensor_id"],
+                    "avg_value": round(row["avg_value"], 2), "sample_count": row["sample_count"],
+                }},
+            )
 
 
 def run():
@@ -97,16 +108,19 @@ def run():
                     logger.error("Consumer error", extra={"category": "infra", "fields": {"error": str(msg.error())}})
                 else:
                     payload = json.loads(msg.value())
-                    minute_start = get_window_start(payload["timestamp"], MINUTE_SECONDS)
-                    hour_start = get_window_start(payload["timestamp"], HOUR_SECONDS)
+                    incoming_context = extract_trace_context(payload.get("trace_context", {}))
 
-                    update_accumulator(_minute_accumulators, payload["sensor_id"], payload["type"], minute_start, payload["value"])
-                    update_accumulator(_hour_accumulators, payload["sensor_id"], payload["type"], hour_start, payload["value"])
+                    with tracer.start_as_current_span("aggregator.accumulate_reading", context=incoming_context) as span:
+                        span.set_attribute("sensor_id", payload.get("sensor_id", "unknown"))
+
+                        minute_start = get_window_start(payload["timestamp"], MINUTE_SECONDS)
+                        hour_start = get_window_start(payload["timestamp"], HOUR_SECONDS)
+
+                        update_accumulator(_minute_accumulators, payload["sensor_id"], payload["type"], minute_start, payload["value"])
+                        update_accumulator(_hour_accumulators, payload["sensor_id"], payload["type"], hour_start, payload["value"])
 
                     consumer.commit(msg)
 
-            # Checked every loop iteration (message or timeout) so a sensor
-            # going silent mid-window still gets flushed on time.
             flush_completed_windows(pg_conn, _minute_accumulators, MINUTE_SECONDS, "aggregates_minute")
             flush_completed_windows(pg_conn, _hour_accumulators, HOUR_SECONDS, "aggregates_hourly")
     except KeyboardInterrupt:
