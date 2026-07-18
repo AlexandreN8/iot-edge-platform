@@ -6,6 +6,7 @@ from confluent_kafka import Consumer
 import psycopg2
 from business_rules import classify_severity, should_send_email, build_email_content
 from logging_setup import get_logger
+from tracing_setup import get_tracer, extract_trace_context
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
 KAFKA_BOOTSTRAP_SERVERS_KEY = "bootstrap.servers"
@@ -21,6 +22,7 @@ INPUT_TOPIC = "anomalie"
 GROUP_ID = "alert-service-group"
 
 logger = get_logger("alert_service")
+tracer = get_tracer("alert_service")
 
 _last_email_sent = {}
 _last_global_email_sent = None
@@ -98,29 +100,41 @@ def run():
             value = original["value"]
             reason = anomaly["reason"]
 
-            severity = classify_severity(reason)
-            now = time.time()
-            send_now = should_send_email(sensor_id, now, _last_email_sent, _last_global_email_sent)
+            incoming_context = extract_trace_context(original.get("trace_context", {}))
 
-            if send_now:
-                subject, plain_body, html_body = build_email_content(sensor_id, sensor_type, value, reason, severity)
-                try:
-                    send_email(subject, plain_body, html_body)
-                    _last_email_sent[sensor_id] = now
-                    _last_global_email_sent = now
-                    logger.info(
-                        "Email sent", 
-                        extra={"category": "business", "fields": {"sensor_id": sensor_id, "severity": severity}}
-                    )
-                except smtplib.SMTPException as e:
-                    logger.error(
-                        "Email failed", 
-                        extra={"category": "business", "fields": {"sensor_id": sensor_id, "error": str(e)}}
-                    )
-                    send_now = False
+            with tracer.start_as_current_span("alert_service.process_anomaly", context=incoming_context) as span:
+                span.set_attribute("sensor_id", sensor_id)
 
-            insert_alert(pg_conn, sensor_id, sensor_type, value, reason, severity, anomaly["detected_at"], send_now)
-            consumer.commit(msg)
+                severity = classify_severity(reason)
+                span.set_attribute("severity", severity)
+
+                now = time.time()
+                send_now = should_send_email(sensor_id, now, _last_email_sent, _last_global_email_sent)
+
+                if send_now:
+                    subject, plain_body, html_body = build_email_content(sensor_id, sensor_type, value, reason, severity)
+                    try:
+                        send_email(subject, plain_body, html_body)
+                        _last_email_sent[sensor_id] = now
+                        _last_global_email_sent = now
+                        span.set_attribute("outcome", "email_sent")
+                        logger.info(
+                            "Email sent",
+                            extra={"category": "business", "fields": {"sensor_id": sensor_id, "severity": severity}},
+                        )
+                    except smtplib.SMTPException as e:
+                        span.set_attribute("outcome", "email_failed")
+                        span.set_attribute("error", str(e))
+                        logger.error(
+                            "Email failed",
+                            extra={"category": "business", "fields": {"sensor_id": sensor_id, "error": str(e)}},
+                        )
+                        send_now = False
+                else:
+                    span.set_attribute("outcome", "email_throttled")
+
+                insert_alert(pg_conn, sensor_id, sensor_type, value, reason, severity, anomaly["detected_at"], send_now)
+                consumer.commit(msg)
     except KeyboardInterrupt:
         logger.info("Shutdown requested...", extra={"category": "infra"})
     finally:
