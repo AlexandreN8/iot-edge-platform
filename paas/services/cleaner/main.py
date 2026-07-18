@@ -5,6 +5,7 @@ from confluent_kafka import Consumer, Producer
 import psycopg2
 from business_rules import check_business_range, check_business_duplicate
 from logging_setup import get_logger
+from tracing_setup import get_tracer, inject_trace_context, extract_trace_context
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
 POSTGRES_DSN = os.environ.get("POSTGRES_DSN")
@@ -16,6 +17,7 @@ ENRICHED_TOPIC = "enriched"
 GROUP_ID = "cleaner-group"
 
 logger = get_logger("cleaner")
+tracer = get_tracer("cleaner")
 _last_seen = {}
 
 
@@ -48,7 +50,7 @@ def insert_reading(conn, payload):
 
 def send_to_dlq(producer, payload, reason):
     dlq_payload = {
-        "original_message": payload,
+        "original_message": payload,  # already carries its own trace_context, nested 
         "reason": reason,
         "rejected_at": time.time(),
         "rejected_by": "cleaner",
@@ -94,39 +96,47 @@ def run():
                 continue
 
             payload = json.loads(msg.value())
+            incoming_context = extract_trace_context(payload.get("trace_context", {}))
 
-            ok, reason = check_business_range(payload)
-            if not ok:
-                logger.info(
-                    "Reading rejected: out of range",
-                    extra={"category": "business", "fields": {"sensor_id": payload["sensor_id"], "reason": reason}},
-                )
-                send_to_dlq(dlq_producer, payload, f"out_of_range: {reason}")
+            with tracer.start_as_current_span("cleaner.process_reading", context=incoming_context) as span:
+                span.set_attribute("sensor_id", payload.get("sensor_id", "unknown"))
+
+                ok, reason = check_business_range(payload)
+                if not ok:
+                    span.set_attribute("outcome", "rejected_out_of_range")
+                    logger.info(
+                        "Reading rejected: out of range",
+                        extra={"category": "business", "fields": {"sensor_id": payload["sensor_id"], "reason": reason}},
+                    )
+                    send_to_dlq(dlq_producer, payload, f"out_of_range: {reason}")
+                    consumer.commit(msg)
+                    continue
+
+                ok, reason = check_business_duplicate(payload, _last_seen)
+                if not ok:
+                    span.set_attribute("outcome", "rejected_business_duplicate")
+                    logger.info(
+                        "Reading rejected: business duplicate",
+                        extra={"category": "business", "fields": {"sensor_id": payload["sensor_id"], "reason": reason}},
+                    )
+                    send_to_dlq(dlq_producer, payload, f"business_duplicate: {reason}")
+                    consumer.commit(msg)
+                    continue
+
+                insert_reading(pg_conn, payload)
+                enriched = enrich_payload(payload)
+                enriched["trace_context"] = inject_trace_context()
+                send_to_enriched(enriched_producer, enriched)
+
+                span.set_attribute("outcome", "stored_and_enriched")
+                _last_seen[payload["sensor_id"]] = (payload["value"], payload["timestamp"])
                 consumer.commit(msg)
-                continue
-
-            ok, reason = check_business_duplicate(payload, _last_seen)
-            if not ok:
                 logger.info(
-                    "Reading rejected: business duplicate",
-                    extra={"category": "business", "fields": {"sensor_id": payload["sensor_id"], "reason": reason}},
+                    "Reading stored and enriched",
+                    extra={"category": "business", "fields": {
+                        "sensor_id": payload["sensor_id"], "value": payload["value"], "unit": payload["unit"],
+                    }},
                 )
-                send_to_dlq(dlq_producer, payload, f"business_duplicate: {reason}")
-                consumer.commit(msg)
-                continue
-
-            insert_reading(pg_conn, payload)
-            enriched = enrich_payload(payload)
-            send_to_enriched(enriched_producer, enriched)
-
-            _last_seen[payload["sensor_id"]] = (payload["value"], payload["timestamp"])
-            consumer.commit(msg)
-            logger.info(
-                "Reading stored and enriched",
-                extra={"category": "business", "fields": {
-                    "sensor_id": payload["sensor_id"], "value": payload["value"], "unit": payload["unit"],
-                }},
-            )
     except KeyboardInterrupt:
         logger.info("Shutdown requested", extra={"category": "infra"})
     finally:
