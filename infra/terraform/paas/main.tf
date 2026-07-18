@@ -366,3 +366,98 @@ resource "docker_container" "fluent_bit" {
 resource "terraform_data" "fluent_bit_config_hash" {
   input = filesha256("${path.module}/../../../paas/config/fluent-bit/fluent-bit.conf")
 }
+
+
+# --- Tempo ---
+resource "docker_image" "tempo" {
+  name = "grafana/tempo:2.6.0"
+}
+
+resource "docker_volume" "tempo_data" {
+  name = "tempo_data"
+}
+
+resource "docker_container" "tempo" {
+  name  = "tempo"
+  image = docker_image.tempo.image_id
+
+  networks_advanced {
+    name = docker_network.paas_network.name
+  }
+
+  ports {
+    internal = 3200
+    external = 3200
+  }
+
+  volumes {
+    volume_name    = docker_volume.tempo_data.name
+    container_path = "/var/tempo"
+  }
+
+  volumes {
+    host_path      = abspath("${path.module}/../../../paas/config/tempo/tempo.yaml")
+    container_path = "/etc/tempo.yaml"
+    read_only      = true
+  }
+
+  command = ["-config.file=/etc/tempo.yaml"]
+
+  restart = "unless-stopped"
+
+  lifecycle {
+    replace_triggered_by = [
+      terraform_data.tempo_config_hash
+    ]
+  }
+}
+
+resource "terraform_data" "tempo_config_hash" {
+  input = filesha256("${path.module}/../../../paas/config/tempo/tempo.yaml")
+}
+
+
+# --- OTEL Collector ---
+resource "docker_image" "otel_collector" {
+  name = "otel/opentelemetry-collector-contrib:0.111.0"
+}
+
+resource "docker_container" "otel_collector" {
+  name  = "otel-collector"
+  image = docker_image.otel_collector.image_id
+
+  networks_advanced {
+    name = docker_network.paas_network.name
+  }
+
+  ports {
+    internal = 4317
+    external = 4317
+  }
+  ports {
+    internal = 4318
+    external = 4318
+  }
+
+  volumes {
+    host_path      = abspath("${path.module}/../../../paas/config/otel-collector/otel-collector-config.yaml")
+    container_path = "/etc/otelcol-config.yaml"
+    read_only      = true
+  }
+
+  command = ["--config=/etc/otelcol-config.yaml"]
+
+  restart = "unless-stopped"
+
+  depends_on = [docker_container.tempo]
+
+  lifecycle {
+    replace_triggered_by = [
+      terraform_data.otel_collector_config_hash
+    ]
+  }
+}
+
+resource "terraform_data" "otel_collector_config_hash" {
+  input = filesha256("${path.module}/../../../paas/config/otel-collector/otel-collector-config.yaml")
+}
