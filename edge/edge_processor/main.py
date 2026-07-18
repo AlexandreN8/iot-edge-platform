@@ -9,6 +9,7 @@ from buffer import init_db, insert
 from sender import run_sender_loop
 from heartbeat import touch_heartbeat
 from logging_setup import get_logger
+from tracing_setup import get_tracer, inject_trace_context, extract_trace_context
 
 BROKER_HOST = os.environ.get("BROKER_HOST", "localhost")
 BROKER_PORT = int(os.environ.get("BROKER_PORT", 1883))
@@ -16,6 +17,7 @@ DB_PATH = "buffer.db"
 HEARTBEAT_MQTT_FILE = "/app/heartbeat_mqtt"
 
 logger = get_logger("edge_processor")
+tracer = get_tracer("edge_processor")
 conn = init_db(DB_PATH)
 
 
@@ -48,13 +50,18 @@ def on_message(client, userdata, msg):
     if not validate(payload):
         logger.info("Rejected: invalid schema", extra={"category": "infra", "fields": {"payload": payload}})
         return
-    insert(conn, json.dumps(payload))
-    logger.info(
-        "Reading buffered",
-        extra={"category": "business", "fields": {
-            "sensor_id": payload.get("sensor_id"), "type": payload.get("type"), "value": payload.get("value"),
-        }},
-    )
+
+    incoming_context = extract_trace_context(payload.get("trace_context", {}))
+    with tracer.start_as_current_span("edge_processor.receive_and_buffer", context=incoming_context) as span:
+        span.set_attribute("sensor_id", payload.get("sensor_id", "unknown"))
+        payload["trace_context"] = inject_trace_context()  # re-injects THIS span as the parent for the next hop
+        insert(conn, json.dumps(payload))
+        logger.info(
+            "Reading buffered",
+            extra={"category": "business", "fields": {
+                "sensor_id": payload.get("sensor_id"), "type": payload.get("type"), "value": payload.get("value"),
+            }},
+        )
 
 
 if __name__ == "__main__":
