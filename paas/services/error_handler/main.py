@@ -5,6 +5,7 @@ from confluent_kafka import Consumer
 from prometheus_client import start_http_server, Counter, Gauge
 from business_rules import classify_fault_type
 from logging_setup import get_logger
+from tracing_setup import get_tracer, extract_trace_context
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
 KAFKA_BOOTSTRAP_SERVERS_KEY = "bootstrap.servers"
@@ -14,6 +15,7 @@ INPUT_TOPIC = "dlq"
 GROUP_ID = "error-handler-group"
 
 logger = get_logger("error_handler")
+tracer = get_tracer("error_handler")
 
 dlq_messages_total = Counter(
     "dlq_messages_total",
@@ -31,7 +33,7 @@ def run():
     start_http_server(METRICS_PORT)
     logger.info(
         "Error handler exposing metrics",
-        extra={"category": "infra", "fields": {"port": METRICS_PORT}}
+        extra={"category": "infra", "fields": {"port": METRICS_PORT}},
     )
 
     consumer = Consumer({
@@ -44,9 +46,9 @@ def run():
 
     logger.info(
         "Error handler listening on topic",
-        extra={"category": "infra", "fields": {"topic": INPUT_TOPIC}}
+        extra={"category": "infra", "fields": {"topic": INPUT_TOPIC}},
     )
-    
+
     try:
         while True:
             msg = consumer.poll(1.0)
@@ -55,7 +57,7 @@ def run():
             if msg.error():
                 logger.error(
                     "Consumer error",
-                    extra={"category": "infra", "fields": {"error": str(msg.error())}}
+                    extra={"category": "infra", "fields": {"error": str(msg.error())}},
                 )
                 continue
 
@@ -64,16 +66,22 @@ def run():
             rejected_by = dlq_event.get("rejected_by", "unknown")
             fault_type = classify_fault_type(reason)
 
-            dlq_messages_total.labels(fault_type=fault_type, rejected_by=rejected_by).inc()
-            dlq_last_rejection_timestamp.labels(fault_type=fault_type).set(time.time())
-
-            logger.info(
-                "Recorded DLQ event",
-                extra={
-                    "category": "business", 
-                    "fields": {"fault_type": fault_type, "rejected_by": rejected_by}
-                }
+            original_message = dlq_event.get("original_message", {})
+            incoming_context = extract_trace_context(
+                original_message.get("trace_context", {}) if isinstance(original_message, dict) else {}
             )
+
+            with tracer.start_as_current_span("error_handler.record_dlq_event", context=incoming_context) as span:
+                span.set_attribute("fault_type", fault_type)
+                span.set_attribute("rejected_by", rejected_by)
+
+                dlq_messages_total.labels(fault_type=fault_type, rejected_by=rejected_by).inc()
+                dlq_last_rejection_timestamp.labels(fault_type=fault_type).set(time.time())
+
+                logger.info(
+                    "Recorded DLQ event",
+                    extra={"category": "business", "fields": {"fault_type": fault_type, "rejected_by": rejected_by}},
+                )
             consumer.commit(msg)
     except KeyboardInterrupt:
         logger.info("Shutdown requested", extra={"category": "infra"})
