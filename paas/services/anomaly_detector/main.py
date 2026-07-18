@@ -4,6 +4,7 @@ import time
 from confluent_kafka import Consumer, Producer
 from business_rules import check_statistical_anomaly, check_flapping_anomaly, WINDOW_SIZE
 from logging_setup import get_logger
+from tracing_setup import get_tracer, extract_trace_context
 
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:9092")
 KAFKA_BOOTSTRAP_SERVERS_KEY = "bootstrap.servers"
@@ -13,6 +14,7 @@ ANOMALY_TOPIC = "anomalie"
 GROUP_ID = "anomaly-detector-group"
 
 logger = get_logger("anomaly_detector")
+tracer = get_tracer("anomaly_detector")
 
 _value_history = {}       # sensor_id -> [recent values] (types continuous)
 _transition_history = {}  # sensor_id -> [timestamps of recent transitions] (types binary)
@@ -35,7 +37,7 @@ def update_transition_history(sensor_id, timestamp, value, last_values):
 
 def send_to_anomalie(producer, payload, reason):
     anomaly_payload = {
-        "original_message": payload,
+        "original_message": payload,  # already carries its own trace_context, nested 
         "reason": reason,
         "detected_at": time.time(),
         "detected_by": "anomaly_detector",
@@ -66,27 +68,39 @@ def run():
                 continue
 
             payload = json.loads(msg.value())
+            incoming_context = extract_trace_context(payload.get("trace_context", {}))
 
-            ok, reason = check_statistical_anomaly(payload, _value_history)
-            if not ok:
-                logger.info(
-                    "Anomaly detected: statistical",
-                    extra={"category": "business", "fields": {"sensor_id": payload["sensor_id"], "reason": reason}},
-                )
-                send_to_anomalie(anomaly_producer, payload, reason)
+            with tracer.start_as_current_span("anomaly_detector.evaluate_reading", context=incoming_context) as span:
+                span.set_attribute("sensor_id", payload.get("sensor_id", "unknown"))
 
-            ok_flap, reason_flap = check_flapping_anomaly(payload, _transition_history)
-            if not ok_flap:
-                logger.info(
-                    "Anomaly detected: flapping",
-                    extra={"category": "business", "fields": {"sensor_id": payload["sensor_id"], "reason": reason_flap}},
-                )
-                send_to_anomalie(anomaly_producer, payload, reason_flap)
+                statistical_flagged = False
+                flapping_flagged = False
 
-            update_value_history(payload["sensor_id"], payload["value"])
-            update_transition_history(payload["sensor_id"], payload["timestamp"], payload["value"], _last_values)
+                ok, reason = check_statistical_anomaly(payload, _value_history)
+                if not ok:
+                    statistical_flagged = True
+                    logger.info(
+                        "Anomaly detected: statistical",
+                        extra={"category": "business", "fields": {"sensor_id": payload["sensor_id"], "reason": reason}},
+                    )
+                    send_to_anomalie(anomaly_producer, payload, reason)
 
-            consumer.commit(msg)
+                ok_flap, reason_flap = check_flapping_anomaly(payload, _transition_history)
+                if not ok_flap:
+                    flapping_flagged = True
+                    logger.info(
+                        "Anomaly detected: flapping",
+                        extra={"category": "business", "fields": {"sensor_id": payload["sensor_id"], "reason": reason_flap}},
+                    )
+                    send_to_anomalie(anomaly_producer, payload, reason_flap)
+
+                span.set_attribute("statistical_anomaly_detected", statistical_flagged)
+                span.set_attribute("flapping_anomaly_detected", flapping_flagged)
+
+                update_value_history(payload["sensor_id"], payload["value"])
+                update_transition_history(payload["sensor_id"], payload["timestamp"], payload["value"], _last_values)
+
+                consumer.commit(msg)
     except KeyboardInterrupt:
         logger.info("Shutdown requested", extra={"category": "infra"})
     finally:

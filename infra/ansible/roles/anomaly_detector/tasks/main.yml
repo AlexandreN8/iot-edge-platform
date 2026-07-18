@@ -28,6 +28,7 @@
       tag: "cleaner"
     env:
       KAFKA_BOOTSTRAP: "kafka:9092"
+      OTEL_EXPORTER_ENDPOINT: "otel-collector:4317"
       PYTHONUNBUFFERED: "1"
     restart_policy: unless-stopped
     state: "{{ container_state | default('started') }}"
