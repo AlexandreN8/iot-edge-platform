@@ -5,6 +5,7 @@ import json
 import os
 from heartbeat import touch_heartbeat
 from logging_setup import get_logger
+from tracing_setup import get_tracer, inject_trace_context
 
 BROKER_HOST = os.environ.get("BROKER_HOST", "localhost")
 BROKER_PORT = int(os.environ.get("BROKER_PORT", 1883))
@@ -13,6 +14,7 @@ FAULT_RATE = 0.05  # 5% of messages are faulty, distributed across several fault
 HEARTBEAT_FILE = "/app/heartbeat"
 
 logger = get_logger("iot_devices")
+tracer = get_tracer("iot_devices")
 
 SENSORS_CONFIG = [
     {"type": "co2", "sensor_id": "co2-001", "min": 400, "max": 1500, "unit": "ppm"},
@@ -224,26 +226,34 @@ if __name__ == "__main__":  # pragma: no cover
 
                 measure = generate_value(sensor)
                 payload = build_payload(sensor, measure)
-                payload_json = json.dumps(payload)
                 topic = f"sensors/{sensor['sensor_id']}"
 
                 faulty_message, fault_label = maybe_inject_fault(sensor, payload)
 
-                if faulty_message is not None:
-                    client.publish(topic, faulty_message, qos=1)
-                    logger.info(
-                        "Fault injected",
-                        extra={"category": "business", "fields": {"topic": topic, "fault_type": fault_label, "fault_injected": True}},
-                    )
-                else:
-                    client.publish(topic, payload_json, qos=1)
-                    _last_payload_cache[sensor["sensor_id"]] = payload_json
-                    logger.info(
-                        "Reading published",
-                        extra={"category": "business", "fields": {
-                            "topic": topic, "sensor_id": payload["sensor_id"], "value": payload["value"], "fault_injected": False,
-                        }},
-                    )
+                with tracer.start_as_current_span("iot_devices.publish_reading") as span:
+                    span.set_attribute("sensor_id", sensor["sensor_id"])
+                    span.set_attribute("sensor_type", sensor["type"])
+
+                    if faulty_message is not None:
+                        span.set_attribute("fault_injected", True)
+                        span.set_attribute("fault_type", fault_label)
+                        client.publish(topic, faulty_message, qos=1)
+                        logger.info(
+                            "Fault injected",
+                            extra={"category": "business", "fields": {"topic": topic, "fault_type": fault_label, "fault_injected": True}},
+                        )
+                    else:
+                        span.set_attribute("fault_injected", False)
+                        payload["trace_context"] = inject_trace_context()
+                        payload_json = json.dumps(payload)
+                        client.publish(topic, payload_json, qos=1)
+                        _last_payload_cache[sensor["sensor_id"]] = payload_json
+                        logger.info(
+                            "Reading published",
+                            extra={"category": "business", "fields": {
+                                "topic": topic, "sensor_id": payload["sensor_id"], "value": payload["value"], "fault_injected": False,
+                            }},
+                        )
 
             touch_heartbeat(HEARTBEAT_FILE)
             time.sleep(INTERVAL)
