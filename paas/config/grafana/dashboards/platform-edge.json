@@ -1,0 +1,78 @@
+{
+  "title": "Platform - Edge",
+  "uid": "platform-edge",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-30m", "to": "now" },
+  "refresh": "10s",
+  "panels": [
+    { "id": 100, "title": "RED — Rate, Errors, Duration (per edge service)", "type": "row", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+    {
+      "id": 1, "title": "Rate — calls/sec by service", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "spanNulls": true } } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+        "expr": "sum by (service) (rate(traces_spanmetrics_calls_total{service=~\"iot_devices|edge_processor\"}[5m]))",
+        "legendFormat": "{{service}}", "refId": "A" }]
+    },
+    {
+      "id": 2, "title": "Duration — p95 latency by span", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "spanNulls": true } } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+        "expr": "histogram_quantile(0.95, sum by (span_name, le) (rate(traces_spanmetrics_latency_bucket{service=~\"iot_devices|edge_processor\"}[5m])))",
+        "legendFormat": "{{span_name}}", "refId": "A" }]
+    },
+
+    { "id": 101, "title": "Data quality — fault injection", "type": "row", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 } },
+    {
+      "id": 3, "title": "Readings published: clean vs fault-injected", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "datasource": { "type": "loki", "uid": "loki-iot" },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki-iot" },
+        "expr": "sum by (fault_injected) (count_over_time({job=\"edge\", service=\"iot_devices\"} | json | fault_injected!=\"\" [$__interval]))",
+        "legendFormat": "fault_injected={{fault_injected}}", "refId": "A" }]
+    },
+    {
+      "id": 4, "title": "Fault type breakdown", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "datasource": { "type": "loki", "uid": "loki-iot" },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki-iot" },
+        "expr": "sum by (fault_type) (count_over_time({job=\"edge\", service=\"iot_devices\"} | json | fault_type!=\"\" [$__interval]))",
+        "legendFormat": "{{fault_type}}", "refId": "A" }]
+    },
+
+    { "id": 102, "title": "OTA deployments", "type": "row", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 } },
+    {
+      "id": 5, "title": "OTA outcomes (log-derived — no Prometheus metric exists for this yet)", "type": "table",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 19 },
+      "datasource": { "type": "loki", "uid": "loki-iot" },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki-iot" },
+        "expr": "{job=\"edge\", service=\"ota_agent\"} | json | message=~\"Applying update|Update succeeded|Rolled back|Falling back\"",
+        "refId": "A" }]
+    },
+
+    { "id": 103, "title": "Logs", "type": "row", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 } },
+    {
+      "id": 6, "title": "Log volume by service", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "datasource": { "type": "loki", "uid": "loki-iot" },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki-iot" },
+        "expr": "sum by (service) (count_over_time({job=\"edge\"}[$__interval]))",
+        "legendFormat": "{{service}}", "refId": "A" }]
+    },
+    {
+      "id": 7, "title": "Warning/Error level logs by service", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "datasource": { "type": "loki", "uid": "loki-iot" },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars" } } },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki-iot" },
+        "expr": "sum by (service, level) (count_over_time({job=\"edge\", level=~\"WARNING|ERROR\"}[$__interval]))",
+        "legendFormat": "{{service}} — {{level}}", "refId": "A" }]
+    }
+  ]
+}
