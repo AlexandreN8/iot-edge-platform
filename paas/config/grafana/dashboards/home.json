@@ -1,0 +1,124 @@
+{
+  "title": "Home",
+  "uid": "home",
+  "schemaVersion": 39,
+  "version": 2,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-24h", "to": "now" },
+  "refresh": "30s",
+  "panels": [
+    { "id": 100, "title": "System health", "type": "row", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+    {
+      "id": 1, "title": "error_handler scrape", "type": "stat",
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+      "fieldConfig": { "defaults": { "mappings": [
+        { "type": "value", "options": { "1": { "text": "UP", "color": "green" } } },
+        { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } }
+      ]}},
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-iot" }, "expr": "up{job=\"error_handler\"}", "instant": true, "refId": "A" }]
+    },
+    {
+    "id": 2, "title": "Service activity (traced calls, last 5m) — proxy healthcheck, not a true up/down for non-scraped services (see Phase 7.1 retrofit)",
+    "type": "table",
+    "gridPos": { "h": 6, "w": 8, "x": 4, "y": 1 },
+    "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+    "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-iot" }, "format": "table", "instant": true,
+        "expr": "sum by (service) (rate(traces_spanmetrics_calls_total[5m])) > bool 0", "refId": "A" }],
+    "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value": "status" } } }
+    ],
+    "fieldConfig": { "defaults": {
+        "custom": { "cellOptions": { "type": "color-background" } },
+        "mappings": [
+        { "type": "value", "options": { "1": { "text": "ACTIVE", "color": "green" } } },
+        { "type": "value", "options": { "0": { "text": "INACTIVE", "color": "red" } } }
+        ]
+    }}
+    },
+    {
+      "id": 3, "title": "Readings (24h)", "type": "stat",
+      "gridPos": { "h": 6, "w": 4, "x": 12, "y": 1 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "table",
+        "rawSql": "SELECT count(*) AS value FROM readings WHERE received_at > now() - interval '24 hours'", "refId": "A" }]
+    },
+    {
+      "id": 4, "title": "DLQ rejects (24h)", "type": "stat",
+      "gridPos": { "h": 6, "w": 4, "x": 16, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green" }, { "color": "orange", "value": 10 }] } } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-iot" }, "expr": "sum(increase(dlq_messages_total[24h]))", "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 5, "title": "Last OTA outcome", "type": "table",
+      "gridPos": { "h": 6, "w": 4, "x": 20, "y": 1 },
+      "datasource": { "type": "loki", "uid": "loki-iot" },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki-iot" },
+        "expr": "{job=\"edge\", service=\"ota_agent\"} | json | message=~\"Update succeeded|Rolled back|Falling back\" | line_format \"{{.message}} — {{.sha}}\"",
+        "refId": "A" }]
+    },
+
+    { "id": 101, "title": "Alerts summary (24h)", "type": "row", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 } },
+    {
+      "id": 6, "title": "Critical alerts", "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green" }, { "color": "red", "value": 1 }] } } },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "table",
+        "rawSql": "SELECT count(*) AS value FROM alerts WHERE severity = 'critical' AND created_at > now() - interval '24 hours'", "refId": "A" }]
+    },
+    {
+      "id": 7, "title": "Warning alerts", "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green" }, { "color": "orange", "value": 5 }] } } },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "table",
+        "rawSql": "SELECT count(*) AS value FROM alerts WHERE severity = 'warning' AND created_at > now() - interval '24 hours'", "refId": "A" }]
+    },
+    {
+      "id": 8, "title": "Emails sent", "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 8 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "table",
+        "rawSql": "SELECT count(*) AS value FROM alerts WHERE email_sent = true AND created_at > now() - interval '24 hours'", "refId": "A" }]
+    },
+    {
+      "id": 9, "title": "Throttled (no email)", "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 8 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "table",
+        "rawSql": "SELECT count(*) AS value FROM alerts WHERE email_sent = false AND created_at > now() - interval '24 hours'", "refId": "A" }]
+    },
+    {
+      "id": 10, "title": "Alerts by sensor (24h)", "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "table",
+        "rawSql": "SELECT sensor_id, count(*) AS value FROM alerts WHERE created_at > now() - interval '24 hours' GROUP BY sensor_id ORDER BY value DESC", "refId": "A" }]
+    },
+    {
+      "id": 11, "title": "10 most recent alerts", "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "table",
+        "rawSql": "SELECT created_at, sensor_id, severity, reason FROM alerts ORDER BY created_at DESC LIMIT 10", "refId": "A" }],
+      "fieldConfig": { "overrides": [{ "matcher": { "id": "byName", "options": "severity" }, "properties": [
+        { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+        { "id": "mappings", "value": [
+          { "type": "value", "options": { "critical": { "color": "red", "index": 0 } } },
+          { "type": "value", "options": { "warning": { "color": "orange", "index": 1 } } }
+        ]}
+      ]}]}
+    },
+
+    { "id": 102, "title": "Navigate", "type": "row", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 20 } },
+    {
+      "id": 12, "title": "Dashboards", "type": "text",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 21 },
+      "options": { "mode": "markdown",
+        "content": "[Business Overview](/d/business-overview) | [Platform - PaaS](/d/platform-paas) | [Platform - Edge](/d/platform-edge)\n\nFor ad-hoc log/trace search, use **Explore** with the Loki or Tempo datasource." }
+    }
+  ]
+}
