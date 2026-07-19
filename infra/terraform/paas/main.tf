@@ -281,6 +281,8 @@ resource "docker_container" "prometheus" {
     read_only      = true
   }
 
+  command = ["--config.file=/etc/prometheus/prometheus.yml", "--web.enable-remote-write-receiver"]
+
   restart = "unless-stopped"
 }
 
