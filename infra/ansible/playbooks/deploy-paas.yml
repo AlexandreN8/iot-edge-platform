@@ -1,6 +1,23 @@
 ---
 - name: Deploy PaaS application containers
   hosts: paas
+  pre_tasks:
+    - name: Wait for Fluent Bit to accept connections before deploying dependent services
+      ansible.builtin.wait_for:
+        host: localhost
+        port: 24224
+        timeout: 30
+        delay: 0
+      when: container_state | default('started') != 'absent'
+
+    - name: Wait for OTel Collector to accept connections before deploying dependent services
+      ansible.builtin.wait_for:
+        host: localhost
+        port: 4317
+        timeout: 30
+        delay: 0
+      when: container_state | default('started') != 'absent'
+
   roles:
     - cleaner
     - anomaly_detector
