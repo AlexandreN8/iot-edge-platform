@@ -1,0 +1,243 @@
+{
+  "title": "Business Overview",
+  "uid": "business-overview",
+  "schemaVersion": 39,
+  "version": 3,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-30m", "to": "now" },
+  "refresh": "5s",
+  "templating": {
+    "list": [
+      {
+        "name": "sensor_id",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "postgres-iot" },
+        "query": "SELECT DISTINCT sensor_id FROM readings ORDER BY sensor_id",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "title": "Readings (24h)", "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "table",
+        "rawSql": "SELECT count(*) AS value FROM readings WHERE received_at > now() - interval '24 hours'", "refId": "A" }]
+    },
+    {
+      "id": 2, "title": "Anomalies detected (24h)", "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green" }, { "color": "orange", "value": 5 }] } } },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "table",
+        "rawSql": "SELECT count(*) AS value FROM alerts WHERE created_at > now() - interval '24 hours'", "refId": "A" }]
+    },
+    {
+      "id": 3, "title": "Alerts emailed (24h)", "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "table",
+        "rawSql": "SELECT count(*) AS value FROM alerts WHERE email_sent = true AND created_at > now() - interval '24 hours'", "refId": "A" }]
+    },
+    {
+      "id": 4, "title": "DLQ rejects (24h)", "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "color": "green" }, { "color": "orange", "value": 10 }] } } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-iot" }, "expr": "sum(increase(dlq_messages_total[24h]))", "instant": true, "refId": "A" }]
+    },
+    {
+      "id": 5, "title": "Latest readings", "type": "table",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "table",
+        "rawSql": "SELECT received_at, sensor_id, type, value, unit FROM readings WHERE sensor_id IN ($sensor_id) ORDER BY received_at DESC LIMIT 20", "refId": "A" }]
+    },
+
+    { "id": 100, "title": "Raw sensor readings", "type": "row", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 12 } },
+
+    {
+      "id": 20, "title": "CO2 (ppm)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "fieldConfig": { "defaults": {
+        "unit": "ppm", "min": 0, "max": 5000,
+        "custom": { "drawStyle": "line", "lineWidth": 2, "pointSize": 3, "spanNulls": true, "fillOpacity": 0,
+          "thresholdsStyle": { "mode": "area" } },
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "orange", "value": 1500 }, { "color": "red", "value": 3000 }
+        ]}
+      }},
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "time_series",
+        "rawSql": "SELECT received_at AS \"time\", value, sensor_id AS metric FROM readings WHERE type = 'co2' AND sensor_id IN ($sensor_id) ORDER BY received_at", "refId": "A" }]
+    },
+    {
+      "id": 21, "title": "Temperature (°C)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "fieldConfig": { "defaults": {
+        "unit": "celsius", "min": -40, "max": 60,
+        "custom": { "drawStyle": "line", "lineWidth": 2, "pointSize": 3, "spanNulls": true, "fillOpacity": 0,
+          "thresholdsStyle": { "mode": "area" } },
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "blue", "value": null }, { "color": "green", "value": 10 }, { "color": "orange", "value": 35 }, { "color": "red", "value": 50 }
+        ]}
+      }},
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "time_series",
+        "rawSql": "SELECT received_at AS \"time\", value, sensor_id AS metric FROM readings WHERE type = 'temperature' AND sensor_id IN ($sensor_id) ORDER BY received_at", "refId": "A" }]
+    },
+    {
+      "id": 22, "title": "Humidity (%)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "fieldConfig": { "defaults": {
+        "unit": "percent", "min": 0, "max": 100,
+        "custom": { "drawStyle": "line", "lineWidth": 2, "pointSize": 3, "spanNulls": true, "fillOpacity": 0,
+          "thresholdsStyle": { "mode": "area" } },
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "orange", "value": null }, { "color": "green", "value": 30 }, { "color": "orange", "value": 70 }
+        ]}
+      }},
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "time_series",
+        "rawSql": "SELECT received_at AS \"time\", value, sensor_id AS metric FROM readings WHERE type = 'humidity' AND sensor_id IN ($sensor_id) ORDER BY received_at", "refId": "A" }]
+    },
+    {
+      "id": 23, "title": "Smoke (ppm)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "fieldConfig": { "defaults": {
+        "unit": "ppm", "min": 0, "max": 1000,
+        "custom": { "drawStyle": "line", "lineWidth": 2, "pointSize": 3, "spanNulls": true, "fillOpacity": 0,
+          "thresholdsStyle": { "mode": "area" } },
+        "thresholds": { "mode": "absolute", "steps": [
+          { "color": "green", "value": null }, { "color": "orange", "value": 300 }, { "color": "red", "value": 600 }
+        ]}
+      }},
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "time_series",
+        "rawSql": "SELECT received_at AS \"time\", value, sensor_id AS metric FROM readings WHERE type = 'smoke' AND sensor_id IN ($sensor_id) ORDER BY received_at", "refId": "A" }]
+    },
+    {
+      "id": 24, "title": "Occupancy (people) — illustrative bounds, not Cleaner-enforced", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 29 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "fieldConfig": { "defaults": {
+        "unit": "short", "min": 0, "max": 30,
+        "custom": { "drawStyle": "line", "lineWidth": 2, "pointSize": 3, "spanNulls": true, "fillOpacity": 0 }
+      }},
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "time_series",
+        "rawSql": "SELECT received_at AS \"time\", value, sensor_id AS metric FROM readings WHERE type = 'occupancy' AND sensor_id IN ($sensor_id) ORDER BY received_at", "refId": "A" }]
+    },
+    {
+      "id": 25, "title": "Power consumption (W) — illustrative bounds, not Cleaner-enforced", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 29 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "fieldConfig": { "defaults": {
+        "unit": "watt", "min": 0, "max": 3000,
+        "custom": { "drawStyle": "line", "lineWidth": 2, "pointSize": 3, "spanNulls": true, "fillOpacity": 0 },
+        "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 2500 }] }
+      }},
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "time_series",
+        "rawSql": "SELECT received_at AS \"time\", value, sensor_id AS metric FROM readings WHERE type = 'power_consumption' AND sensor_id IN ($sensor_id) ORDER BY received_at", "refId": "A" }]
+    },
+    {
+      "id": 26, "title": "Vibration (mm/s) — illustrative bounds, not Cleaner-enforced", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 29 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "fieldConfig": { "defaults": {
+        "unit": "velocitymms", "min": 0, "max": 10,
+        "custom": { "drawStyle": "line", "lineWidth": 2, "pointSize": 3, "spanNulls": true, "fillOpacity": 0 }
+      }},
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "time_series",
+        "rawSql": "SELECT received_at AS \"time\", value, sensor_id AS metric FROM readings WHERE type = 'vibration' AND sensor_id IN ($sensor_id) ORDER BY received_at", "refId": "A" }]
+    },
+    {
+      "id": 27, "title": "Opening (state)", "type": "state-timeline",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 37 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "fieldConfig": { "defaults": { "mappings": [
+        { "type": "value", "options": { "0": { "text": "closed", "color": "green" } } },
+        { "type": "value", "options": { "1": { "text": "open", "color": "red" } } }
+      ]}},
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "time_series",
+        "rawSql": "SELECT received_at AS \"time\", value, sensor_id AS metric FROM readings WHERE type = 'opening' AND sensor_id IN ($sensor_id) ORDER BY received_at", "refId": "A" }]
+    },
+
+    { "id": 101, "title": "Per-minute aggregates", "type": "row", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 43 } },
+
+    {
+      "id": 30, "title": "CO2 — avg/min/max (per minute)", "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 44 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "fieldConfig": { "defaults": { "unit": "ppm", "min": 0, "max": 5000, "custom": { "drawStyle": "line", "spanNulls": true } } },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "time_series",
+        "rawSql": "SELECT window_start AS \"time\", avg_value AS value, sensor_id AS metric FROM aggregates_minute WHERE type = 'co2' AND sensor_id IN ($sensor_id) ORDER BY window_start", "refId": "A" }]
+    },
+    {
+      "id": 31, "title": "Temperature — avg (per minute)", "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 44 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "fieldConfig": { "defaults": { "unit": "celsius", "min": -40, "max": 60, "custom": { "drawStyle": "line", "spanNulls": true } } },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "time_series",
+        "rawSql": "SELECT window_start AS \"time\", avg_value AS value, sensor_id AS metric FROM aggregates_minute WHERE type = 'temperature' AND sensor_id IN ($sensor_id) ORDER BY window_start", "refId": "A" }]
+    },
+    {
+      "id": 32, "title": "Humidity — avg (per minute)", "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 51 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "drawStyle": "line", "spanNulls": true } } },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "time_series",
+        "rawSql": "SELECT window_start AS \"time\", avg_value AS value, sensor_id AS metric FROM aggregates_minute WHERE type = 'humidity' AND sensor_id IN ($sensor_id) ORDER BY window_start", "refId": "A" }]
+    },
+    {
+      "id": 33, "title": "Power — avg (per minute)", "type": "timeseries",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 51 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "fieldConfig": { "defaults": { "unit": "watt", "min": 0, "max": 3000, "custom": { "drawStyle": "line", "spanNulls": true } } },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "time_series",
+        "rawSql": "SELECT window_start AS \"time\", avg_value AS value, sensor_id AS metric FROM aggregates_minute WHERE type = 'power_consumption' AND sensor_id IN ($sensor_id) ORDER BY window_start", "refId": "A" }]
+    },
+
+    { "id": 102, "title": "Alerts & quality", "type": "row", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 58 } },
+
+    {
+      "id": 8, "title": "Recent alerts", "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 59 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "table",
+        "rawSql": "SELECT created_at, sensor_id, severity, reason, email_sent FROM alerts WHERE sensor_id IN ($sensor_id) ORDER BY created_at DESC LIMIT 20", "refId": "A" }],
+      "fieldConfig": { "overrides": [{ "matcher": { "id": "byName", "options": "severity" }, "properties": [
+        { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+        { "id": "mappings", "value": [
+          { "type": "value", "options": { "critical": { "color": "red", "index": 0 } } },
+          { "type": "value", "options": { "warning": { "color": "orange", "index": 1 } } }
+        ]}
+      ]}]}
+    },
+    {
+      "id": 9, "title": "Anomaly detection rate by type", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 59 },
+      "datasource": { "type": "loki", "uid": "loki-iot" },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki-iot" },
+        "expr": "sum by (message) (count_over_time({service=\"anomaly_detector\", category=\"business\"} | json | message=~\"Anomaly detected.*\" [$__interval]))",
+        "legendFormat": "{{message}}", "refId": "A" }]
+    },
+    {
+      "id": 10, "title": "Email sent vs throttled", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 67 },
+      "datasource": { "type": "postgres", "uid": "postgres-iot" },
+      "targets": [{ "datasource": { "type": "postgres", "uid": "postgres-iot" }, "format": "time_series",
+        "rawSql": "SELECT date_trunc('hour', created_at) AS \"time\", CASE WHEN email_sent THEN 'sent' ELSE 'throttled' END AS metric, count(*) AS value FROM alerts GROUP BY 1, 2 ORDER BY 1", "refId": "A" }]
+    },
+    {
+      "id": 11, "title": "DLQ rejection rate by fault type", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 67 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-iot" }, "expr": "rate(dlq_messages_total[5m])", "legendFormat": "{{fault_type}}", "refId": "A" }]
+    }
+  ]
+}
