@@ -1,0 +1,93 @@
+{
+  "title": "Platform - PaaS",
+  "uid": "platform-paas",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-30m", "to": "now" },
+  "refresh": "10s",
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+        "query": "label_values(traces_spanmetrics_calls_total, service)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    { "id": 100, "title": "RED — Rate, Errors, Duration (per service)", "type": "row", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+    {
+      "id": 1, "title": "Rate — calls/sec by service", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "spanNulls": true } } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+        "expr": "sum by (service) (rate(traces_spanmetrics_calls_total{service=~\"$service\"}[5m]))",
+        "legendFormat": "{{service}}", "refId": "A" }]
+    },
+    {
+      "id": 2, "title": "Duration — p95 latency by service", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "line", "spanNulls": true } } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+        "expr": "histogram_quantile(0.95, sum by (service, le) (rate(traces_spanmetrics_latency_bucket{service=~\"$service\"}[5m])))",
+        "legendFormat": "{{service}}", "refId": "A" }]
+    },
+    {
+      "id": 3, "title": "Errors — span error rate by service (no spans currently set an error status - expect empty/zero, not yet a true error signal)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "spanNulls": true } } },
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+        "expr": "sum by (service) (rate(traces_spanmetrics_calls_total{service=~\"$service\", status_code=\"STATUS_CODE_ERROR\"}[5m]))",
+        "legendFormat": "{{service}}", "refId": "A" }]
+    },
+    {
+      "id": 4, "title": "error_handler /metrics scrape health (only service directly scraped by Prometheus)",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-iot" },
+      "fieldConfig": { "defaults": { "mappings": [
+        { "type": "value", "options": { "1": { "text": "UP", "color": "green" } } },
+        { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } }
+      ]}},
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus-iot" }, "expr": "up{job=\"error_handler\"}", "instant": true, "refId": "A" }]
+    },
+
+    { "id": 101, "title": "Logs", "type": "row", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 } },
+    {
+      "id": 5, "title": "Log volume by service", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 18 },
+      "datasource": { "type": "loki", "uid": "loki-iot" },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki-iot" },
+        "expr": "sum by (service) (count_over_time({job=\"paas\"}[$__interval]))",
+        "legendFormat": "{{service}}", "refId": "A" }]
+    },
+    {
+      "id": 6, "title": "Log volume by category (business vs infra)", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 18 },
+      "datasource": { "type": "loki", "uid": "loki-iot" },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki-iot" },
+        "expr": "sum by (category) (count_over_time({job=\"paas\"}[$__interval]))",
+        "legendFormat": "{{category}}", "refId": "A" }]
+    },
+    {
+      "id": 7, "title": "Warning/Error level logs by service", "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 26 },
+      "datasource": { "type": "loki", "uid": "loki-iot" },
+      "fieldConfig": { "defaults": { "custom": { "drawStyle": "bars" } } },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki-iot" },
+        "expr": "sum by (service, level) (count_over_time({job=\"paas\", level=~\"WARNING|ERROR\"}[$__interval]))",
+        "legendFormat": "{{service}} — {{level}}", "refId": "A" }]
+    }
+  ]
+}
